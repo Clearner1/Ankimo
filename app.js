@@ -27,6 +27,14 @@ class AnkiConnect {
   getNumCardsReviewedToday() { return this.invoke('getNumCardsReviewedToday'); }
   getNumCardsReviewedByDay() { return this.invoke('getNumCardsReviewedByDay'); }
   sync() { return this.invoke('sync'); }
+  storeMediaFile(filename, data) {
+    return this.invoke('storeMediaFile', { filename, data: btoa(unescape(encodeURIComponent(data))) });
+  }
+  async retrieveMediaFile(filename) {
+    const result = await this.invoke('retrieveMediaFile', { filename });
+    if (!result) return null;
+    return decodeURIComponent(escape(atob(result)));
+  }
 }
 
 // ===== App State =====
@@ -35,7 +43,7 @@ const state = {
   currentFilter: '',
   currentQuery: '*',
   allTags: [],
-  pinnedTags: JSON.parse(localStorage.getItem('ankiflomo_pinned_tags') || '[]'),
+  pinnedTags: [],
   noteIds: [],
   notesLoaded: 0,
   batchSize: 30,
@@ -63,6 +71,7 @@ const el = {
 // ===== Initialize =====
 async function init() {
   try {
+    await loadPinnedTags();
     await Promise.all([loadTags(), loadDecks(), loadModels(), loadStats(), loadHeatmap()]);
     await loadNotes('*');
     setupEvents();
@@ -79,8 +88,30 @@ async function loadTags() {
   renderAllTags();
 }
 
-function savePinnedTags() {
+const CONFIG_FILE = '_ankiflomo_config.json';
+
+async function loadPinnedTags() {
+  try {
+    const data = await anki.retrieveMediaFile(CONFIG_FILE);
+    if (data) {
+      const config = JSON.parse(data);
+      state.pinnedTags = config.pinnedTags || [];
+    }
+  } catch (e) {
+    console.warn('Load pinned tags from Anki failed, using localStorage fallback', e);
+    state.pinnedTags = JSON.parse(localStorage.getItem('ankiflomo_pinned_tags') || '[]');
+  }
+}
+
+async function savePinnedTags() {
+  const config = JSON.stringify({ pinnedTags: state.pinnedTags });
+  // Save to both Anki and localStorage (fallback)
   localStorage.setItem('ankiflomo_pinned_tags', JSON.stringify(state.pinnedTags));
+  try {
+    await anki.storeMediaFile(CONFIG_FILE, config);
+  } catch (e) {
+    console.warn('Save pinned tags to Anki failed', e);
+  }
 }
 
 function togglePinTag(fullTag) {
@@ -94,20 +125,37 @@ function togglePinTag(fullTag) {
 function renderAllTags(filter = '') {
   const filterLower = filter.toLowerCase();
   const pinned = state.pinnedTags.filter(t => state.allTags.includes(t));
-  const unpinned = state.allTags.filter(t => !pinned.includes(t));
-  // Filter
-  const filteredPinned = filterLower ? pinned.filter(t => t.toLowerCase().includes(filterLower)) : pinned;
-  const filteredUnpinned = filterLower ? unpinned.filter(t => t.toLowerCase().includes(filterLower)) : unpinned;
-  // Render pinned
+
+  // === Render pinned section: each pinned tag as a subtree with all descendants ===
   el.pinnedTags.innerHTML = '';
-  const pinnedTree = buildTagTree(filteredPinned);
-  renderTagNodes(pinnedTree, el.pinnedTags, '', true);
-  // Render unpinned
+  pinned.forEach(pinnedTag => {
+    // Collect this tag + all descendants
+    const prefix = pinnedTag + '::';
+    const descendants = state.allTags.filter(t => t === pinnedTag || t.startsWith(prefix));
+    // Apply search filter
+    const filtered = filterLower
+      ? descendants.filter(t => t.toLowerCase().includes(filterLower))
+      : descendants;
+    if (filtered.length === 0) return;
+    // Strip the parent prefix to build a relative subtree
+    const parentPrefix = pinnedTag.includes('::')
+      ? pinnedTag.substring(0, pinnedTag.lastIndexOf('::') + 2)
+      : '';
+    const relativeTags = filtered.map(t => t.substring(parentPrefix.length));
+    const tree = buildTagTree(relativeTags);
+    renderTagNodes(tree, el.pinnedTags, parentPrefix ? parentPrefix.slice(0, -2) : '', true);
+  });
+
+  // === Render full tree in "more tags" ===
+  const filteredAll = filterLower
+    ? state.allTags.filter(t => t.toLowerCase().includes(filterLower))
+    : state.allTags;
   el.tagTree.innerHTML = '';
-  const unpinnedTree = buildTagTree(filteredUnpinned);
-  renderTagNodes(unpinnedTree, el.tagTree, '', false);
+  const tree = buildTagTree(filteredAll);
+  renderTagNodes(tree, el.tagTree, '', false);
+
   // Update count
-  el.moreTagsCount.textContent = `(${filteredUnpinned.length})`;
+  el.moreTagsCount.textContent = `(${state.allTags.length})`;
   // If searching, auto-expand
   if (filterLower) {
     el.tagTree.classList.remove('collapsed');

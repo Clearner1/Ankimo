@@ -237,6 +237,49 @@ body {
   text-transform: uppercase;
 }
 
+.pinned-tag-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px 5px 24px;
+  border-radius: var(--radius-sm);
+  color: var(--sidebar-text-bright);
+  font-size: .85rem;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.pinned-tag-item:hover {
+  background: var(--sidebar-hover);
+}
+
+.pinned-tag-item .tag-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pinned-tag-item .tag-icon {
+  font-size: .7rem;
+  opacity: .5;
+}
+
+.pinned-tag-item .tag-unpin {
+  font-size: .65rem;
+  opacity: .3;
+  cursor: pointer;
+  transition: opacity var(--transition);
+}
+
+.pinned-tag-item:hover .tag-unpin {
+  opacity: .7;
+}
+
+.pinned-tag-item .tag-unpin:hover {
+  opacity: 1;
+}
+
 /* More Tags Toggle */
 .more-tags-toggle {
   display: flex;
