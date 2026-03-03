@@ -1,14 +1,18 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AnkiFlomo — 你的 Anki 笔记管理器</title>
-<meta name="description" content="一个类 Flomo 风格的 Anki 笔记浏览和管理工具">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AnkiFlomo — 你的 Anki 笔记管理器</title>
+  <meta name="description" content="一个类 Flomo 风格的 Anki 笔记浏览和管理工具">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
 </head>
+
 <body>
   <aside class="sidebar" id="sidebar">
     <div class="sidebar-header">
@@ -18,7 +22,8 @@
       <div class="stats-row">
         <div class="stat-item"><span class="stat-num" id="statNotes">—</span><span class="stat-label">笔记</span></div>
         <div class="stat-item"><span class="stat-num" id="statTags">—</span><span class="stat-label">标签</span></div>
-        <div class="stat-item"><span class="stat-num" id="statReviewed">—</span><span class="stat-label">今日复习</span></div>
+        <div class="stat-item"><span class="stat-num" id="statReviewed">—</span><span class="stat-label">今日复习</span>
+        </div>
       </div>
       <div class="heatmap-container" id="heatmap"></div>
     </div>
@@ -33,9 +38,16 @@
     <div class="sidebar-section">
       <div class="section-header" id="tagHeader">
         <span>🏷️ 标签</span>
-        <span class="section-toggle">▾</span>
       </div>
-      <div class="tag-tree" id="tagTree"></div>
+      <div class="tag-search-box">
+        <input type="text" id="tagSearchInput" placeholder="搜索标签...">
+      </div>
+      <div class="pinned-tags" id="pinnedTags"></div>
+      <div class="more-tags-toggle" id="moreTagsToggle">
+        <span>▸ 更多标签</span>
+        <span class="more-tags-count" id="moreTagsCount"></span>
+      </div>
+      <div class="tag-tree collapsed" id="tagTree"></div>
     </div>
     <div class="sidebar-section">
       <div class="section-header" id="deckHeader">
@@ -61,8 +73,12 @@
         <textarea id="frontInput" placeholder="正面 / 问题..." rows="2"></textarea>
         <textarea id="backInput" placeholder="背面 / 答案..." rows="2"></textarea>
         <div class="input-controls">
-          <select id="deckSelect"><option>加载中...</option></select>
-          <select id="modelSelect"><option>加载中...</option></select>
+          <select id="deckSelect">
+            <option>加载中...</option>
+          </select>
+          <select id="modelSelect">
+            <option>加载中...</option>
+          </select>
           <input type="text" id="tagInput" placeholder="标签 (空格分隔)">
           <button class="save-btn" id="saveBtn">保存</button>
         </div>
@@ -87,4 +103,5 @@
   <div class="overlay" id="overlay"></div>
   <script src="app.js"></script>
 </body>
+
 </html>

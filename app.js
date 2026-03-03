@@ -35,6 +35,7 @@ const state = {
   currentFilter: '',
   currentQuery: '*',
   allTags: [],
+  pinnedTags: JSON.parse(localStorage.getItem('ankiflomo_pinned_tags') || '[]'),
   noteIds: [],
   notesLoaded: 0,
   batchSize: 30,
@@ -45,7 +46,9 @@ const state = {
 // ===== DOM Refs =====
 const $ = id => document.getElementById(id);
 const el = {
-  tagTree: $('tagTree'), deckList: $('deckList'), notesList: $('notesList'),
+  tagTree: $('tagTree'), pinnedTags: $('pinnedTags'), deckList: $('deckList'),
+  notesList: $('notesList'), tagSearchInput: $('tagSearchInput'),
+  moreTagsToggle: $('moreTagsToggle'), moreTagsCount: $('moreTagsCount'),
   searchInput: $('searchInput'), deckSelect: $('deckSelect'), modelSelect: $('modelSelect'),
   tagInput: $('tagInput'), frontInput: $('frontInput'), backInput: $('backInput'),
   saveBtn: $('saveBtn'), syncBtn: $('syncBtn'), loading: $('loading'),
@@ -73,16 +76,49 @@ async function init() {
 async function loadTags() {
   state.allTags = await anki.getTags();
   el.statTags.textContent = state.allTags.length;
-  renderTagTree();
+  renderAllTags();
+}
+
+function savePinnedTags() {
+  localStorage.setItem('ankiflomo_pinned_tags', JSON.stringify(state.pinnedTags));
+}
+
+function togglePinTag(fullTag) {
+  const idx = state.pinnedTags.indexOf(fullTag);
+  if (idx >= 0) state.pinnedTags.splice(idx, 1);
+  else state.pinnedTags.push(fullTag);
+  savePinnedTags();
+  renderAllTags();
+}
+
+function renderAllTags(filter = '') {
+  const filterLower = filter.toLowerCase();
+  const pinned = state.pinnedTags.filter(t => state.allTags.includes(t));
+  const unpinned = state.allTags.filter(t => !pinned.includes(t));
+  // Filter
+  const filteredPinned = filterLower ? pinned.filter(t => t.toLowerCase().includes(filterLower)) : pinned;
+  const filteredUnpinned = filterLower ? unpinned.filter(t => t.toLowerCase().includes(filterLower)) : unpinned;
+  // Render pinned
+  el.pinnedTags.innerHTML = '';
+  const pinnedTree = buildTagTree(filteredPinned);
+  renderTagNodes(pinnedTree, el.pinnedTags, '', true);
+  // Render unpinned
+  el.tagTree.innerHTML = '';
+  const unpinnedTree = buildTagTree(filteredUnpinned);
+  renderTagNodes(unpinnedTree, el.tagTree, '', false);
+  // Update count
+  el.moreTagsCount.textContent = `(${filteredUnpinned.length})`;
+  // If searching, auto-expand
+  if (filterLower) {
+    el.tagTree.classList.remove('collapsed');
+    el.moreTagsToggle.querySelector('span').textContent = '▾ 更多标签';
+  }
 }
 
 function buildTagTree(tags) {
   const root = {};
   tags.forEach(tag => {
     const parts = tag.split('::');
-    let node = root;
-    parts.forEach(p => { if (!node[p]) node[p] = {}; node[p] = node[p]; });
-    // build nested
     let current = root;
     for (const part of parts) {
       if (!current._children) current._children = {};
@@ -93,17 +129,12 @@ function buildTagTree(tags) {
   return root._children || {};
 }
 
-function renderTagTree() {
-  const tree = buildTagTree(state.allTags);
-  el.tagTree.innerHTML = '';
-  renderTagNodes(tree, el.tagTree, '');
-}
-
-function renderTagNodes(nodes, container, prefix) {
+function renderTagNodes(nodes, container, prefix, isPinnedSection) {
   Object.keys(nodes).sort().forEach(name => {
     const fullTag = prefix ? `${prefix}::${name}` : name;
     const children = nodes[name]._children;
     const hasChildren = children && Object.keys(children).length > 0;
+    const isPinned = state.pinnedTags.includes(fullTag);
     const node = document.createElement('div');
     node.className = 'tag-node';
     const row = document.createElement('div');
@@ -113,9 +144,14 @@ function renderTagNodes(nodes, container, prefix) {
       <span class="tag-toggle">${hasChildren ? '▸' : ''}</span>
       <span class="tag-icon">#</span>
       <span class="tag-name">${name}</span>
+      <span class="tag-pin ${isPinned ? 'pinned' : ''}" data-tag="${escHtml(fullTag)}">${isPinned ? '⭐' : '☆'}</span>
     `;
     row.addEventListener('click', (e) => {
       e.stopPropagation();
+      if (e.target.closest('.tag-pin')) {
+        togglePinTag(fullTag);
+        return;
+      }
       if (hasChildren && e.target.closest('.tag-toggle')) {
         const childEl = node.querySelector('.tag-children');
         if (childEl) {
@@ -131,7 +167,7 @@ function renderTagNodes(nodes, container, prefix) {
     if (hasChildren) {
       const childContainer = document.createElement('div');
       childContainer.className = 'tag-children';
-      renderTagNodes(children, childContainer, fullTag);
+      renderTagNodes(children, childContainer, fullTag, isPinnedSection);
       node.appendChild(childContainer);
     }
     container.appendChild(node);
@@ -419,11 +455,16 @@ function setupEvents() {
     el.sidebar.classList.remove('open');
     el.overlay.classList.remove('active');
   });
-  // Section collapse
-  $('tagHeader').addEventListener('click', () => {
-    $('tagHeader').classList.toggle('collapsed');
-    el.tagTree.style.display = $('tagHeader').classList.contains('collapsed') ? 'none' : '';
+  // Tag search
+  el.tagSearchInput.addEventListener('input', () => {
+    renderAllTags(el.tagSearchInput.value.trim());
   });
+  // More tags toggle
+  el.moreTagsToggle.addEventListener('click', () => {
+    const isCollapsed = el.tagTree.classList.toggle('collapsed');
+    el.moreTagsToggle.querySelector('span').textContent = isCollapsed ? '▸ 更多标签' : '▾ 更多标签';
+  });
+  // Section collapse
   $('deckHeader').addEventListener('click', () => {
     $('deckHeader').classList.toggle('collapsed');
     el.deckList.style.display = $('deckHeader').classList.contains('collapsed') ? 'none' : '';
