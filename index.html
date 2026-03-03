@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AnkiFlomo — 你的 Anki 笔记管理器</title>
+<meta name="description" content="一个类 Flomo 风格的 Anki 笔记浏览和管理工具">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <h1 class="logo">📝 AnkiFlomo</h1>
+    </div>
+    <div class="stats-card" id="statsCard">
+      <div class="stats-row">
+        <div class="stat-item"><span class="stat-num" id="statNotes">—</span><span class="stat-label">笔记</span></div>
+        <div class="stat-item"><span class="stat-num" id="statTags">—</span><span class="stat-label">标签</span></div>
+        <div class="stat-item"><span class="stat-num" id="statReviewed">—</span><span class="stat-label">今日复习</span></div>
+      </div>
+      <div class="heatmap-container" id="heatmap"></div>
+    </div>
+    <nav class="sidebar-nav">
+      <a class="nav-item active" id="navAll" data-filter="all">
+        <span class="nav-icon">📋</span><span>全部笔记</span>
+      </a>
+      <a class="nav-item" id="navDaily" data-filter="is:due">
+        <span class="nav-icon">📥</span><span>每日回顾</span>
+      </a>
+    </nav>
+    <div class="sidebar-section">
+      <div class="section-header" id="tagHeader">
+        <span>🏷️ 标签</span>
+        <span class="section-toggle">▾</span>
+      </div>
+      <div class="tag-tree" id="tagTree"></div>
+    </div>
+    <div class="sidebar-section">
+      <div class="section-header" id="deckHeader">
+        <span>📚 牌组</span>
+        <span class="section-toggle">▾</span>
+      </div>
+      <div class="deck-list" id="deckList"></div>
+    </div>
+  </aside>
+
+  <main class="main-content">
+    <header class="top-bar">
+      <button class="menu-btn" id="menuBtn">☰</button>
+      <div class="search-box">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="searchInput" placeholder="搜索笔记... (支持 Anki 搜索语法)">
+      </div>
+      <button class="sync-btn" id="syncBtn" title="同步">🔄 同步</button>
+    </header>
+
+    <div class="content-area" id="contentArea">
+      <div class="input-card" id="inputCard">
+        <textarea id="frontInput" placeholder="正面 / 问题..." rows="2"></textarea>
+        <textarea id="backInput" placeholder="背面 / 答案..." rows="2"></textarea>
+        <div class="input-controls">
+          <select id="deckSelect"><option>加载中...</option></select>
+          <select id="modelSelect"><option>加载中...</option></select>
+          <input type="text" id="tagInput" placeholder="标签 (空格分隔)">
+          <button class="save-btn" id="saveBtn">保存</button>
+        </div>
+      </div>
+
+      <div class="filter-info" id="filterInfo" style="display:none">
+        <span id="filterText"></span>
+        <button class="clear-filter" id="clearFilter">✕ 清除筛选</button>
+      </div>
+
+      <div class="notes-list" id="notesList"></div>
+      <div class="loading" id="loading" style="display:none">
+        <div class="spinner"></div><span>加载中...</span>
+      </div>
+      <div class="empty-state" id="emptyState" style="display:none">
+        <span class="empty-icon">📭</span>
+        <p>没有找到笔记</p>
+      </div>
+    </div>
+  </main>
+
+  <div class="overlay" id="overlay"></div>
+  <script src="app.js"></script>
+</body>
+</html>
