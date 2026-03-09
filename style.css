@@ -822,6 +822,50 @@ body {
   margin: 4px 0;
 }
 
+/* Frosted Glass (毛玻璃) for answer fields */
+.note-field-content.blurred {
+  filter: blur(6px);
+  -webkit-filter: blur(6px);
+  cursor: pointer;
+  user-select: none;
+  transition: filter .35s cubic-bezier(.4, 0, .2, 1);
+  position: relative;
+}
+
+.note-field-content.blurred:hover {
+  filter: blur(3px);
+  -webkit-filter: blur(3px);
+}
+
+.note-field-content.blurred::after {
+  content: '👁️ 点击查看答案';
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: .85rem;
+  font-weight: 600;
+  color: var(--accent);
+  background: rgba(255, 255, 255, .15);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  border-radius: var(--radius-sm);
+  opacity: 0;
+  transition: opacity .25s ease;
+  pointer-events: none;
+}
+
+.note-field-content.blurred:hover::after {
+  opacity: 1;
+}
+
+.note-field-content.revealed {
+  filter: none;
+  -webkit-filter: none;
+  transition: filter .35s cubic-bezier(.4, 0, .2, 1);
+}
+
 .note-meta {
   display: flex;
   align-items: center;

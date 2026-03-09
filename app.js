@@ -530,10 +530,10 @@ function renderNoteCard(note) {
   card.className = 'note-card';
   card.dataset.noteId = note.noteId;
   const fields = Object.entries(note.fields);
-  const fieldsHtml = fields.slice(0, 2).map(([name, f]) => `
+  const fieldsHtml = fields.slice(0, 2).map(([name, f], idx) => `
     <div class="note-field">
       <div class="note-field-label">${escHtml(name)}</div>
-      <div class="note-field-content">${sanitizeHtml(f.value)}</div>
+      <div class="note-field-content${idx === 1 ? ' blurred' : ''}">${sanitizeHtml(f.value)}</div>
     </div>
   `).join('');
   const tagsHtml = (note.tags || []).map(t =>
@@ -552,6 +552,18 @@ function renderNoteCard(note) {
       <span class="note-time">${timeStr}</span>
     </div>
   `;
+  // Blurred answer toggle (frosted glass)
+  card.querySelectorAll('.note-field-content.blurred').forEach(field => {
+    field.addEventListener('click', () => {
+      if (field.classList.contains('blurred')) {
+        field.classList.remove('blurred');
+        field.classList.add('revealed');
+      } else {
+        field.classList.remove('revealed');
+        field.classList.add('blurred');
+      }
+    });
+  });
   // Tag click
   card.querySelectorAll('.note-tag').forEach(tag => {
     tag.addEventListener('click', () => {

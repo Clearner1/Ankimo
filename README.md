@@ -24,6 +24,18 @@
 2. **AnkiConnect 插件** — 在 Anki 中安装 AnkiConnect 插件（代码：`2055492159`）
    - 打开 Anki → 工具 → 插件 → 获取插件 → 输入 `2055492159` → 确定
    - 重启 Anki
+3. **配置 AnkiConnect CORS** — 允许本地服务器访问 AnkiConnect API
+   - 打开 Anki → 工具 → 插件 → 选中 AnkiConnect → 配置
+   - 将 `webCorsOriginList` 修改为：
+   ```json
+   "webCorsOriginList": [
+       "http://localhost",
+       "http://localhost:3000",
+       "http://localhost:8080",
+       "http://127.0.0.1:3000"
+   ]
+   ```
+   - 点击确定，重启 Anki
 
 ## 🚀 快速开始
 
@@ -34,7 +46,7 @@ git clone https://github.com/Clearner1/ankimo.git
 cd ankimo
 
 # 启动本地服务器
-python3 -m http.server 3000
+python -m http.server 3000
 
 # 浏览器访问 http://127.0.0.1:3000
 ```
