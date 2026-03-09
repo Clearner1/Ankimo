@@ -558,6 +558,13 @@ body {
   padding: 12px 24px;
   background: var(--card-bg);
   border-bottom: 1px solid var(--card-border);
+  position: relative;
+}
+
+/* Search toggle & close: hidden on desktop */
+.search-toggle,
+.search-close {
+  display: none;
 }
 
 .menu-btn {
@@ -866,6 +873,18 @@ body {
   transition: filter .35s cubic-bezier(.4, 0, .2, 1);
 }
 
+/* Global show answers: parent class overrides all .blurred children */
+.notes-list.show-answers .note-field-content.blurred {
+  filter: none;
+  -webkit-filter: none;
+  user-select: auto;
+  cursor: default;
+}
+
+.notes-list.show-answers .note-field-content.blurred::after {
+  display: none;
+}
+
 .note-meta {
   display: flex;
   align-items: center;
@@ -1024,13 +1043,108 @@ body {
   }
 
   .top-bar {
-    padding: 10px 16px;
+    padding: 10px 12px;
+    gap: 6px;
   }
 
-  .tts-btn,
-  .tts-settings-btn {
+  /* Search: collapse to icon on mobile */
+  .search-toggle {
+    display: block;
+    background: none;
+    border: none;
+    font-size: 1.15rem;
+    cursor: pointer;
+    padding: 4px 6px;
+    border-radius: var(--radius-sm);
+    transition: background var(--transition);
+  }
+
+  .search-toggle:hover {
+    background: var(--accent-bg);
+  }
+
+  .search-box {
     display: none;
   }
+
+  .search-box.expanded {
+    display: flex;
+    position: absolute;
+    inset: 0;
+    z-index: 10;
+    margin: 0;
+    max-width: none;
+    border-radius: 0;
+    padding: 10px 12px;
+    background: var(--card-bg);
+    animation: fadeIn .15s ease;
+  }
+
+  .search-box.expanded .search-close {
+    display: block;
+    background: none;
+    border: none;
+    font-size: 1.1rem;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    flex-shrink: 0;
+  }
+
+  .search-box.expanded .search-close:hover {
+    color: var(--text-primary);
+    background: var(--accent-bg);
+  }
+
+  /* All action buttons: compact icon-only */
+  .blur-toggle-btn,
+  .tts-btn,
+  .sync-btn {
+    padding: 4px 8px;
+    font-size: 1.1rem;
+    border: none;
+    min-width: 0;
+  }
+
+
+  .tts-player {
+    padding: 8px 12px;
+  }
+
+  .tts-player-inner {
+    gap: 8px;
+  }
+
+  .tts-current-text {
+    font-size: .7rem;
+    max-width: 120px;
+  }
+}
+
+/* ===== Blur Toggle Button ===== */
+.blur-toggle-btn {
+  background: none;
+  border: 1px solid var(--card-border);
+  border-radius: 20px;
+  padding: 6px 14px;
+  font-size: .8rem;
+  cursor: pointer;
+  transition: all var(--transition);
+  font-family: var(--font);
+  white-space: nowrap;
+}
+
+.blur-toggle-btn:hover {
+  background: linear-gradient(135deg, rgba(66, 165, 245, .1), rgba(41, 121, 255, .1));
+  border-color: #42a5f5;
+  color: #42a5f5;
+}
+
+.blur-toggle-btn.active {
+  background: linear-gradient(135deg, #42a5f5, #2979ff);
+  color: #fff;
+  border-color: transparent;
 }
 
 /* ===== TTS Buttons ===== */
@@ -1071,20 +1185,6 @@ body {
   }
 }
 
-.tts-settings-btn {
-  background: none;
-  border: none;
-  font-size: 1.1rem;
-  cursor: pointer;
-  padding: 4px 6px;
-  border-radius: var(--radius-sm);
-  opacity: .5;
-  transition: opacity var(--transition);
-}
-
-.tts-settings-btn:hover {
-  opacity: 1;
-}
 
 /* ===== TTS Player Bar ===== */
 .tts-player {

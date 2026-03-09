@@ -52,7 +52,8 @@ const state = {
   notesLoaded: 0,
   batchSize: 30,
   loading: false,
-  fieldCache: {}
+  fieldCache: {},
+  blurEnabled: localStorage.getItem('ankimo_blur_enabled') !== 'false'  // default true
 };
 
 // ===== DOM Refs =====
@@ -69,7 +70,9 @@ const el = {
   statNotes: $('statNotes'), statTags: $('statTags'), statReviewed: $('statReviewed'),
   heatmap: $('heatmap'), contentArea: $('contentArea'),
   sidebar: $('sidebar'), menuBtn: $('menuBtn'), overlay: $('overlay'),
-  navAll: $('navAll'), navDaily: $('navDaily')
+  navAll: $('navAll'), navDaily: $('navDaily'),
+  blurToggleBtn: $('blurToggleBtn'),
+  searchBox: $('searchBox'), searchToggle: $('searchToggle'), searchClose: $('searchClose')
 };
 
 // ===== Initialize =====
@@ -552,8 +555,8 @@ function renderNoteCard(note) {
       <span class="note-time">${timeStr}</span>
     </div>
   `;
-  // Blurred answer toggle (frosted glass)
-  card.querySelectorAll('.note-field-content.blurred').forEach(field => {
+  // Blurred answer toggle (frosted glass) — per-card click
+  card.querySelectorAll('.note-field:nth-child(3) .note-field-content').forEach(field => {
     field.addEventListener('click', () => {
       if (field.classList.contains('blurred')) {
         field.classList.remove('blurred');
@@ -703,6 +706,20 @@ function setupEvents() {
     el.sidebar.classList.remove('open');
     el.overlay.classList.remove('active');
   });
+  // Mobile search expand/collapse
+  el.searchToggle.addEventListener('click', () => {
+    el.searchBox.classList.add('expanded');
+    el.searchInput.focus();
+  });
+  el.searchClose.addEventListener('click', () => {
+    el.searchBox.classList.remove('expanded');
+  });
+  el.searchInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      el.searchBox.classList.remove('expanded');
+      el.searchInput.blur();
+    }
+  });
   // Tag section collapse
   $('tagHeader').addEventListener('click', () => {
     $('tagHeader').classList.toggle('collapsed');
@@ -746,6 +763,13 @@ function setupEvents() {
       el.searchInput.focus();
     }
   });
+  // Blur toggle (global)
+  el.blurToggleBtn.addEventListener('click', toggleGlobalBlur);
+  // Apply persisted state
+  if (!state.blurEnabled) {
+    el.notesList.classList.add('show-answers');
+  }
+  syncBlurBtnUI();
   setupScroll();
 }
 
@@ -777,6 +801,30 @@ function showToast(msg, type = 'success') {
 const style = document.createElement('style');
 style.textContent = '@keyframes fadeOut { to { opacity: 0; transform: translateY(-8px); } }';
 document.head.appendChild(style);
+
+// ===== Blur Toggle =====
+function toggleGlobalBlur() {
+  state.blurEnabled = !state.blurEnabled;
+  localStorage.setItem('ankimo_blur_enabled', state.blurEnabled);
+
+  if (state.blurEnabled) {
+    // Re-blur: remove .show-answers from parent, restore all individually revealed cards
+    el.notesList.classList.remove('show-answers');
+    document.querySelectorAll('.note-field-content.revealed').forEach(f => {
+      f.classList.remove('revealed');
+      f.classList.add('blurred');
+    });
+  } else {
+    // Show all: add .show-answers to parent (CSS cascade overrides .blurred)
+    el.notesList.classList.add('show-answers');
+  }
+  syncBlurBtnUI();
+}
+
+function syncBlurBtnUI() {
+  el.blurToggleBtn.textContent = state.blurEnabled ? '🙈' : '👁️';
+  el.blurToggleBtn.classList.toggle('active', state.blurEnabled);
+}
 
 // ===== TTS Module (MiniMax) =====
 const tts = (() => {
@@ -810,7 +858,8 @@ const tts = (() => {
   }
   function closeSettings() { modalOverlay.style.display = 'none'; }
 
-  document.getElementById('ttsSettingsBtn').addEventListener('click', openSettings);
+  const settingsBtn = document.getElementById('ttsSettingsBtn');
+  if (settingsBtn) settingsBtn.addEventListener('click', openSettings);
   document.getElementById('ttsModalCancel').addEventListener('click', closeSettings);
   document.getElementById('ttsModalSave').addEventListener('click', () => {
     setApiKey(apiKeyInput.value.trim());

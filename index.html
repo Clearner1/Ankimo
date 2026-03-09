@@ -116,13 +116,15 @@
   <main class="main-content">
     <header class="top-bar">
       <button class="menu-btn" id="menuBtn">☰</button>
-      <div class="search-box">
+      <button class="search-toggle" id="searchToggle">🔍</button>
+      <div class="search-box" id="searchBox">
         <span class="search-icon">🔍</span>
         <input type="text" id="searchInput" placeholder="搜索笔记... (支持 Anki 搜索语法)">
+        <button class="search-close" id="searchClose">✕</button>
       </div>
-      <button class="tts-btn" id="ttsBtn" title="朗读筛选的笔记">🔊 朗读</button>
-      <button class="tts-settings-btn" id="ttsSettingsBtn" title="TTS 设置">⚙️</button>
-      <button class="sync-btn" id="syncBtn" title="同步">🔄 同步</button>
+      <button class="blur-toggle-btn active" id="blurToggleBtn" title="切换毛玻璃">🙈</button>
+      <button class="tts-btn" id="ttsBtn" title="朗读筛选的笔记">🔊</button>
+      <button class="sync-btn" id="syncBtn" title="同步">🔄</button>
     </header>
 
     <div class="content-area" id="contentArea">
