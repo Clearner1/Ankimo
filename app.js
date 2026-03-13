@@ -25,6 +25,9 @@ class AnkiConnect {
     return this.invoke('addNote', { note: { deckName, modelName, fields, tags, options: { allowDuplicate: true } } });
   }
   deleteNotes(notes) { return this.invoke('deleteNotes', { notes }); }
+  updateNote(id, fields, tags) {
+    return this.invoke('updateNote', { note: { id, fields, tags } });
+  }
   deckNames() { return this.invoke('deckNames'); }
   modelNames() { return this.invoke('modelNames'); }
   modelFieldNames(modelName) { return this.invoke('modelFieldNames', { modelName }); }
@@ -546,6 +549,7 @@ function renderNoteCard(note) {
   const timeStr = modDate ? formatDate(modDate) : '';
   card.innerHTML = `
     <div class="note-actions">
+      <button class="edit-btn" title="编辑" data-id="${note.noteId}">✏️</button>
       <button class="delete-btn" title="删除" data-id="${note.noteId}">🗑️</button>
     </div>
     ${fieldsHtml}
@@ -573,12 +577,18 @@ function renderNoteCard(note) {
       setFilter(`tag:${tag.dataset.tag}`, `标签: ${tag.dataset.tag}`);
     });
   });
+  // Edit
+  card.querySelector('.edit-btn')?.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    const noteId = parseInt(e.target.closest('.edit-btn').dataset.id);
+    openEditModal(noteId);
+  });
   // Delete
   card.querySelector('.delete-btn')?.addEventListener('click', async (e) => {
     e.stopPropagation();
     if (!confirm('确定删除这条笔记吗？')) return;
     try {
-      await anki.deleteNotes([parseInt(e.target.dataset.id)]);
+      await anki.deleteNotes([parseInt(e.target.closest('.delete-btn').dataset.id)]);
       card.style.animation = 'fadeOut .3s ease';
       setTimeout(() => card.remove(), 300);
       showToast('已删除');
@@ -801,6 +811,203 @@ function showToast(msg, type = 'success') {
 const style = document.createElement('style');
 style.textContent = '@keyframes fadeOut { to { opacity: 0; transform: translateY(-8px); } }';
 document.head.appendChild(style);
+
+// ===== Edit Note Modal =====
+const editState = { noteId: null, fields: {}, saving: false };
+
+async function openEditModal(noteId) {
+  const overlay = document.getElementById('editModalOverlay');
+  const body = document.getElementById('editModalBody');
+  const metaEl = document.getElementById('editModalMeta');
+  const tagsInput = document.getElementById('editTagsInput');
+  const saveBtn = document.getElementById('editModalSave');
+
+  // Show modal with loading state
+  overlay.style.display = 'flex';
+  body.innerHTML = '<div class="edit-loading">加载中...</div>';
+  metaEl.textContent = '';
+  tagsInput.value = '';
+  saveBtn.disabled = false;
+
+  try {
+    const notes = await anki.notesInfo([noteId]);
+    if (!notes || notes.length === 0) throw new Error('未找到笔记');
+    const note = notes[0];
+    editState.noteId = noteId;
+    editState.fields = note.fields;
+
+    // Meta info
+    metaEl.innerHTML = `
+      <span class="edit-meta-chip">📚 ${escHtml(note.modelName)}</span>
+      <span class="edit-meta-chip">🆔 ${noteId}</span>
+    `;
+
+    // Build field editors
+    body.innerHTML = '';
+    Object.entries(note.fields).forEach(([name, field]) => {
+      const group = document.createElement('div');
+      group.className = 'edit-field-group';
+      group.innerHTML = `
+        <label class="edit-field-label">${escHtml(name)}</label>
+        <textarea class="edit-field-textarea" data-field="${escHtml(name)}" rows="3">${escHtml(field.value)}</textarea>
+      `;
+      // Auto-expand textarea
+      const ta = group.querySelector('textarea');
+      ta.addEventListener('input', () => autoResizeTextarea(ta));
+      body.appendChild(group);
+      // Initial resize
+      requestAnimationFrame(() => autoResizeTextarea(ta));
+    });
+
+    // Tags
+    tagsInput.value = (note.tags || []).join(' ');
+
+    // Focus first field
+    const firstTa = body.querySelector('textarea');
+    if (firstTa) firstTa.focus();
+
+  } catch (e) {
+    body.innerHTML = `<div class="edit-loading" style="color:var(--danger)">加载失败: ${escHtml(e.message)}</div>`;
+  }
+}
+
+function autoResizeTextarea(ta) {
+  ta.style.height = 'auto';
+  ta.style.height = Math.max(60, ta.scrollHeight) + 'px';
+}
+
+async function saveEdit() {
+  if (editState.saving || !editState.noteId) return;
+  editState.saving = true;
+  const saveBtn = document.getElementById('editModalSave');
+  saveBtn.disabled = true;
+  saveBtn.textContent = '⏳ 保存中...';
+
+  try {
+    const body = document.getElementById('editModalBody');
+    const tagsInput = document.getElementById('editTagsInput');
+
+    // Collect fields
+    const fields = {};
+    body.querySelectorAll('.edit-field-textarea').forEach(ta => {
+      fields[ta.dataset.field] = ta.value;
+    });
+
+    // Collect tags
+    const tags = tagsInput.value.trim().split(/\s+/).filter(Boolean);
+
+    // Call API
+    await anki.updateNote(editState.noteId, fields, tags);
+
+    // Update the card in DOM without full reload
+    await refreshNoteCard(editState.noteId);
+
+    closeEditModal();
+    showToast('笔记已更新 ✓');
+  } catch (e) {
+    showToast('保存失败: ' + e.message, 'error');
+  }
+  editState.saving = false;
+  saveBtn.disabled = false;
+  saveBtn.textContent = '💾 保存';
+}
+
+async function refreshNoteCard(noteId) {
+  const card = document.querySelector(`.note-card[data-note-id="${noteId}"]`);
+  if (!card) return;
+  try {
+    const notes = await anki.notesInfo([noteId]);
+    if (!notes || notes.length === 0) return;
+    const note = notes[0];
+    // Re-render in place
+    const newCard = document.createElement('div');
+    newCard.className = 'note-card';
+    newCard.dataset.noteId = note.noteId;
+    const fields = Object.entries(note.fields);
+    const fieldsHtml = fields.slice(0, 2).map(([name, f], idx) => `
+      <div class="note-field">
+        <div class="note-field-label">${escHtml(name)}</div>
+        <div class="note-field-content${idx === 1 ? ' blurred' : ''}">${sanitizeHtml(f.value)}</div>
+      </div>
+    `).join('');
+    const tagsHtml = (note.tags || []).map(t =>
+      `<span class="note-tag" data-tag="${escHtml(t)}">${escHtml(t)}</span>`
+    ).join('');
+    const modDate = note.mod ? new Date(note.mod * 1000) : null;
+    const timeStr = modDate ? formatDate(modDate) : '';
+    newCard.innerHTML = `
+      <div class="note-actions">
+        <button class="edit-btn" title="编辑" data-id="${note.noteId}">✏️</button>
+        <button class="delete-btn" title="删除" data-id="${note.noteId}">🗑️</button>
+      </div>
+      ${fieldsHtml}
+      <div class="note-meta">
+        ${tagsHtml}
+        <span class="note-deck">${escHtml(note.modelName || '')}</span>
+        <span class="note-time">${timeStr}</span>
+      </div>
+    `;
+    // Re-bind events
+    newCard.querySelectorAll('.note-field:nth-child(3) .note-field-content').forEach(field => {
+      field.addEventListener('click', () => {
+        if (field.classList.contains('blurred')) {
+          field.classList.remove('blurred');
+          field.classList.add('revealed');
+        } else {
+          field.classList.remove('revealed');
+          field.classList.add('blurred');
+        }
+      });
+    });
+    newCard.querySelectorAll('.note-tag').forEach(tag => {
+      tag.addEventListener('click', () => {
+        setFilter(`tag:${tag.dataset.tag}`, `标签: ${tag.dataset.tag}`);
+      });
+    });
+    newCard.querySelector('.edit-btn')?.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      openEditModal(parseInt(e.target.closest('.edit-btn').dataset.id));
+    });
+    newCard.querySelector('.delete-btn')?.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      if (!confirm('确定删除这条笔记吗？')) return;
+      try {
+        await anki.deleteNotes([parseInt(e.target.closest('.delete-btn').dataset.id)]);
+        newCard.style.animation = 'fadeOut .3s ease';
+        setTimeout(() => newCard.remove(), 300);
+        showToast('已删除');
+      } catch (err) { showToast('删除失败: ' + err.message, 'error'); }
+    });
+    // Animate update
+    newCard.style.animation = 'editPulse .5s ease';
+    card.replaceWith(newCard);
+  } catch (e) {
+    console.error('Refresh card failed:', e);
+  }
+}
+
+function closeEditModal() {
+  document.getElementById('editModalOverlay').style.display = 'none';
+  editState.noteId = null;
+  editState.saving = false;
+}
+
+// Wire edit modal buttons
+document.getElementById('editModalCancel').addEventListener('click', closeEditModal);
+document.getElementById('editModalSave').addEventListener('click', saveEdit);
+document.getElementById('editModalOverlay').addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) closeEditModal();
+});
+// Keyboard shortcuts in modal
+document.addEventListener('keydown', (e) => {
+  if (document.getElementById('editModalOverlay').style.display === 'flex') {
+    if (e.key === 'Escape') closeEditModal();
+    if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+      e.preventDefault();
+      saveEdit();
+    }
+  }
+});
 
 // ===== Blur Toggle =====
 function toggleGlobalBlur() {

@@ -161,6 +161,27 @@
 
   <div class="overlay" id="overlay"></div>
 
+  <!-- Edit Note Modal -->
+  <div class="edit-modal-overlay" id="editModalOverlay" style="display:none">
+    <div class="edit-modal">
+      <div class="edit-modal-header">
+        <h3>✏️ 编辑笔记</h3>
+        <div class="edit-modal-meta" id="editModalMeta"></div>
+      </div>
+      <div class="edit-modal-body" id="editModalBody">
+        <!-- Dynamic fields will be inserted here -->
+      </div>
+      <div class="edit-modal-tags">
+        <label>🏷️ 标签 <span class="edit-tags-hint">(空格分隔)</span></label>
+        <input type="text" id="editTagsInput" placeholder="标签1 标签2 ...">
+      </div>
+      <div class="edit-modal-actions">
+        <button class="edit-modal-cancel" id="editModalCancel">取消</button>
+        <button class="edit-modal-save" id="editModalSave">💾 保存</button>
+      </div>
+    </div>
+  </div>
+
   <!-- TTS Player Bar -->
   <div class="tts-player" id="ttsPlayer" style="display:none">
     <div class="tts-player-inner">
