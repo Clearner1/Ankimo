@@ -715,14 +715,6 @@ select {
   color: var(--accent-strong);
 }
 
-.sync-btn.syncing {
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
 /* Scrollable note stream */
 
 .content-area {

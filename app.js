@@ -867,10 +867,19 @@ function setupEvents() {
   el.saveBtn.addEventListener('click', createNote);
   el.clearFilter.addEventListener('click', clearFilter);
   el.syncBtn.addEventListener('click', async () => {
-    el.syncBtn.classList.add('syncing');
-    try { await anki.sync(); showToast('同步完成 ✓'); init(); }
+    el.syncBtn.disabled = true;
+    el.syncBtn.textContent = '同步中';
+    try {
+      await anki.sync();
+      showToast('同步完成');
+      await Promise.all([loadTags(), loadDecks(), loadModels(), loadStats(), loadHeatmap()]);
+      await loadNotes(state.currentQuery || '*');
+    }
     catch (e) { showToast('同步失败: ' + e.message, 'error'); }
-    el.syncBtn.classList.remove('syncing');
+    finally {
+      el.syncBtn.disabled = false;
+      el.syncBtn.textContent = '同步';
+    }
   });
   el.navAll.addEventListener('click', () => {
     clearFilter();
