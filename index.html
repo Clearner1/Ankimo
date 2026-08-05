@@ -4,52 +4,49 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Ankimo — 你的 Anki 笔记管理器</title>
-  <meta name="description" content="一个类 Flomo 风格的 Anki 笔记浏览和管理工具">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link
-    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&display=swap"
-    rel="stylesheet">
+  <title>Ankimo — 你的 Anki 笔记流</title>
+  <meta name="description" content="Ankimo：把快速记录与 Anki 记忆连接起来">
   <link rel="stylesheet" href="style.css">
 </head>
 
 <body>
   <aside class="sidebar" id="sidebar">
     <div class="sidebar-header">
-      <h1 class="logo">📝 Ankimo</h1>
+      <h1 class="logo"><span class="logo-mark" aria-hidden="true">A</span><span>Ankimo</span></h1>
+      <p class="logo-subtitle">memo · review</p>
     </div>
+
     <div class="stats-card" id="statsCard">
       <div class="stats-row">
         <div class="stat-item"><span class="stat-num" id="statNotes">—</span><span class="stat-label">笔记</span></div>
         <div class="stat-item"><span class="stat-num" id="statTags">—</span><span class="stat-label">标签</span></div>
-        <div class="stat-item"><span class="stat-num" id="statReviewed">—</span><span class="stat-label">今日复习</span>
-        </div>
+        <div class="stat-item"><span class="stat-num" id="statReviewed">—</span><span class="stat-label">今日复习</span></div>
       </div>
       <div class="heatmap-container" id="heatmap"></div>
       <div class="review-stats" id="reviewStats">
         <div class="review-stat-item">
-          <span class="review-stat-icon">📊</span>
+          <span class="review-stat-icon" aria-hidden="true"></span>
           <div class="review-stat-info">
             <span class="review-stat-value" id="statDailyAvg">—</span>
             <span class="review-stat-desc">日均复习</span>
           </div>
         </div>
         <div class="review-stat-item">
-          <span class="review-stat-icon">📅</span>
+          <span class="review-stat-icon" aria-hidden="true"></span>
           <div class="review-stat-info">
             <span class="review-stat-value" id="statDaysLearned">—</span>
             <span class="review-stat-desc">学习天数</span>
           </div>
         </div>
         <div class="review-stat-item">
-          <span class="review-stat-icon">🔥</span>
+          <span class="review-stat-icon" aria-hidden="true"></span>
           <div class="review-stat-info">
             <span class="review-stat-value" id="statCurrentStreak">—</span>
             <span class="review-stat-desc">当前连续</span>
           </div>
         </div>
         <div class="review-stat-item">
-          <span class="review-stat-icon">🏆</span>
+          <span class="review-stat-icon" aria-hidden="true"></span>
           <div class="review-stat-info">
             <span class="review-stat-value" id="statLongestStreak">—</span>
             <span class="review-stat-desc">最长连续</span>
@@ -57,156 +54,155 @@
         </div>
       </div>
     </div>
-    <nav class="sidebar-nav">
+
+    <nav class="sidebar-nav" aria-label="主导航">
       <a class="nav-item active" id="navAll" data-filter="all">
-        <span class="nav-icon">📋</span><span>全部笔记</span>
+        <span class="nav-icon nav-icon-notes" aria-hidden="true"></span><span>全部笔记</span>
       </a>
       <a class="nav-item" id="navDaily" data-filter="is:due">
-        <span class="nav-icon">📥</span><span>每日回顾</span>
+        <span class="nav-icon nav-icon-review" aria-hidden="true"></span><span>每日回顾</span>
       </a>
     </nav>
-    <div class="sidebar-section">
-      <div class="section-header" id="flagHeader">
-        <span>🚩 旗标</span>
-        <span class="section-toggle">▾</span>
-      </div>
-      <div class="flag-list" id="flagList">
-        <div class="flag-item" data-flag="1"><span class="flag-dot" style="background:#ff4444"></span><span>红旗</span>
-        </div>
-        <div class="flag-item" data-flag="2"><span class="flag-dot" style="background:#ff8c00"></span><span>橙旗</span>
-        </div>
-        <div class="flag-item" data-flag="3"><span class="flag-dot" style="background:#4caf50"></span><span>绿旗</span>
-        </div>
-        <div class="flag-item" data-flag="4"><span class="flag-dot" style="background:#448aff"></span><span>蓝旗</span>
-        </div>
-        <div class="flag-item" data-flag="5"><span class="flag-dot" style="background:#e91e90"></span><span>粉旗</span>
-        </div>
-        <div class="flag-item" data-flag="6"><span class="flag-dot" style="background:#00bcd4"></span><span>青旗</span>
-        </div>
-        <div class="flag-item" data-flag="7"><span class="flag-dot" style="background:#9c27b0"></span><span>紫旗</span>
-        </div>
-      </div>
-    </div>
-    <div class="sidebar-section">
+
+    <div class="sidebar-section tags-section">
       <div class="section-header" id="tagHeader">
-        <span>🏷️ 标签</span>
-        <span class="section-toggle">▾</span>
+        <span class="section-title"><span class="section-mark" aria-hidden="true">#</span> 标签</span>
+        <span class="section-toggle" aria-hidden="true">⌄</span>
       </div>
       <div id="tagContent">
         <div class="tag-search-box">
-          <input type="text" id="tagSearchInput" placeholder="搜索标签...">
+          <input type="text" id="tagSearchInput" placeholder="搜索标签..." aria-label="搜索标签">
         </div>
         <div class="pinned-tags" id="pinnedTags"></div>
         <div class="more-tags-toggle" id="moreTagsToggle">
-          <span>▸ 更多标签</span>
+          <span>› 更多标签</span>
           <span class="more-tags-count" id="moreTagsCount"></span>
         </div>
         <div class="tag-tree collapsed" id="tagTree"></div>
       </div>
     </div>
-    <div class="sidebar-section">
-      <div class="section-header" id="deckHeader">
-        <span>📚 牌组</span>
-        <span class="section-toggle">▾</span>
+
+    <div class="sidebar-section flags-section">
+      <div class="section-header collapsed" id="flagHeader">
+        <span class="section-title"><span class="section-mark flag-mark" aria-hidden="true"></span> 旗标</span>
+        <span class="section-toggle" aria-hidden="true">⌄</span>
       </div>
-      <div class="deck-list" id="deckList"></div>
+      <div class="flag-list" id="flagList" style="display:none">
+        <div class="flag-item" data-flag="1"><span class="flag-dot flag-red"></span><span>红旗</span></div>
+        <div class="flag-item" data-flag="2"><span class="flag-dot flag-orange"></span><span>橙旗</span></div>
+        <div class="flag-item" data-flag="3"><span class="flag-dot flag-green"></span><span>绿旗</span></div>
+      </div>
+    </div>
+
+    <div class="sidebar-section deck-section">
+      <div class="section-header collapsed" id="deckHeader">
+        <span class="section-title"><span class="section-mark deck-mark" aria-hidden="true"></span> 牌组</span>
+        <span class="section-toggle" aria-hidden="true">⌄</span>
+      </div>
+      <div class="deck-list" id="deckList" style="display:none"></div>
     </div>
   </aside>
 
   <main class="main-content">
     <header class="top-bar">
-      <button class="menu-btn" id="menuBtn">☰</button>
-      <button class="search-toggle" id="searchToggle">🔍</button>
+      <button class="menu-btn" id="menuBtn" type="button" aria-label="打开侧栏">☰</button>
+      <button class="search-toggle" id="searchToggle" type="button" aria-label="打开搜索">搜索</button>
       <div class="search-box" id="searchBox">
-        <span class="search-icon">🔍</span>
-        <input type="text" id="searchInput" placeholder="搜索笔记... (支持 Anki 搜索语法)">
-        <button class="search-close" id="searchClose">✕</button>
+        <span class="search-icon" aria-hidden="true"></span>
+        <input type="text" id="searchInput" placeholder="搜索笔记... 支持 Anki 搜索语法" aria-label="搜索笔记">
+        <button class="search-close" id="searchClose" type="button" aria-label="关闭搜索">×</button>
       </div>
-      <button class="blur-toggle-btn active" id="blurToggleBtn" title="切换毛玻璃">🙈</button>
-      <button class="tts-btn" id="ttsBtn" title="朗读筛选的笔记">🔊</button>
-      <button class="sync-btn" id="syncBtn" title="同步">🔄</button>
+      <button class="blur-toggle-btn active" id="blurToggleBtn" type="button" title="切换答案显示">答案</button>
+      <button class="sync-btn" id="syncBtn" type="button" title="同步 Anki">同步</button>
     </header>
 
     <div class="content-area" id="contentArea">
-      <div class="input-card" id="inputCard">
-        <textarea id="frontInput" placeholder="正面 / 问题..." rows="2"></textarea>
-        <textarea id="backInput" placeholder="背面 / 答案..." rows="2"></textarea>
-        <div class="input-controls">
-          <select id="deckSelect">
-            <option>加载中...</option>
-          </select>
-          <select id="modelSelect">
-            <option>加载中...</option>
-          </select>
-          <input type="text" id="tagInput" placeholder="标签 (空格分隔)">
-          <button class="save-btn" id="saveBtn">保存</button>
+      <div class="content-column">
+        <section class="input-card" id="inputCard" aria-label="快速记录">
+          <input class="mode-radio visually-hidden" type="radio" name="noteMode" id="noteModeMemo" checked>
+          <input class="mode-radio visually-hidden" type="radio" name="noteMode" id="noteModeQa">
+          <input class="advanced-check visually-hidden" type="checkbox" id="advancedToggle">
+
+          <div class="composer-head">
+            <div>
+              <span class="eyebrow">快速记录</span>
+              <span class="composer-hint">把此刻值得留下的内容写下来</span>
+            </div>
+            <div class="mode-switch" role="tablist" aria-label="笔记类型">
+              <label class="mode-label" for="noteModeMemo" role="tab">笔记</label>
+              <label class="mode-label" for="noteModeQa" role="tab">问答</label>
+            </div>
+          </div>
+
+          <div class="composer-fields">
+            <textarea id="frontInput" placeholder="写下此刻的想法、摘录或待整理内容..." rows="4"></textarea>
+            <textarea id="backInput" placeholder="答案 / 补充内容..." rows="4"></textarea>
+          </div>
+
+          <div class="composer-footer">
+            <label class="tag-input-wrap" for="tagInput">
+              <span class="tag-input-mark" aria-hidden="true">#</span>
+              <input type="text" id="tagInput" placeholder="添加标签，空格分隔" autocomplete="off">
+            </label>
+            <div class="composer-actions">
+              <label class="advanced-toggle" for="advancedToggle">
+                <span>高级设置</span><span class="advanced-chevron" aria-hidden="true">⌄</span>
+              </label>
+              <button class="save-btn" id="saveBtn" type="button">保存</button>
+            </div>
+          </div>
+
+          <div class="advanced-controls" id="advancedControls">
+            <label class="control-field">
+              <span>牌组</span>
+              <select id="deckSelect">
+                <option>加载中...</option>
+              </select>
+            </label>
+            <label class="control-field">
+              <span>模板</span>
+              <select id="modelSelect">
+                <option>加载中...</option>
+              </select>
+            </label>
+          </div>
+        </section>
+
+        <div class="filter-info" id="filterInfo" style="display:none">
+          <span class="filter-dot" aria-hidden="true"></span>
+          <span id="filterText"></span>
+          <button class="clear-filter" id="clearFilter" type="button">清除筛选</button>
         </div>
-      </div>
 
-      <div class="filter-info" id="filterInfo" style="display:none">
-        <span id="filterText"></span>
-        <button class="clear-filter" id="clearFilter">✕ 清除筛选</button>
-      </div>
-
-      <div class="notes-list" id="notesList"></div>
-      <div class="loading" id="loading" style="display:none">
-        <div class="spinner"></div><span>加载中...</span>
-      </div>
-      <div class="empty-state" id="emptyState" style="display:none">
-        <span class="empty-icon">📭</span>
-        <p>没有找到笔记</p>
+        <div class="notes-list" id="notesList"></div>
+        <div class="loading" id="loading" style="display:none">
+          <div class="spinner"></div><span>加载中...</span>
+        </div>
+        <div class="empty-state" id="emptyState" style="display:none">
+          <span class="empty-icon" aria-hidden="true"></span>
+          <p>还没有找到笔记</p>
+          <span>从上面的输入框开始记录。</span>
+        </div>
       </div>
     </div>
   </main>
 
   <div class="overlay" id="overlay"></div>
 
-  <!-- Edit Note Modal -->
   <div class="edit-modal-overlay" id="editModalOverlay" style="display:none">
-    <div class="edit-modal">
+    <div class="edit-modal" role="dialog" aria-modal="true" aria-labelledby="editModalTitle">
       <div class="edit-modal-header">
-        <h3>✏️ 编辑笔记</h3>
+        <h3 id="editModalTitle">编辑笔记</h3>
         <div class="edit-modal-meta" id="editModalMeta"></div>
       </div>
-      <div class="edit-modal-body" id="editModalBody">
-        <!-- Dynamic fields will be inserted here -->
-      </div>
+      <div class="edit-modal-body" id="editModalBody"></div>
       <div class="edit-modal-tags">
-        <label>🏷️ 标签 <span class="edit-tags-hint">(空格分隔)</span></label>
+        <label for="editTagsInput">标签 <span class="edit-tags-hint">（空格分隔）</span></label>
         <input type="text" id="editTagsInput" placeholder="标签1 标签2 ...">
       </div>
       <div class="edit-modal-actions">
-        <button class="edit-modal-cancel" id="editModalCancel">取消</button>
-        <button class="edit-modal-save" id="editModalSave">💾 保存</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- TTS Player Bar -->
-  <div class="tts-player" id="ttsPlayer" style="display:none">
-    <div class="tts-player-inner">
-      <div class="tts-player-info">
-        <span class="tts-progress" id="ttsProgress">0/0</span>
-        <span class="tts-current-text" id="ttsCurrentText">准备中...</span>
-      </div>
-      <div class="tts-player-controls">
-        <button class="tts-ctrl" id="ttsPrev" title="上一条">⏮</button>
-        <button class="tts-ctrl tts-play-pause" id="ttsPlayPause" title="暂停">⏸</button>
-        <button class="tts-ctrl" id="ttsNext" title="下一条">⏭</button>
-        <button class="tts-ctrl tts-stop" id="ttsStop" title="停止">⏹</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- TTS Settings Modal -->
-  <div class="tts-modal-overlay" id="ttsModalOverlay" style="display:none">
-    <div class="tts-modal">
-      <h3>🔊 TTS 设置</h3>
-      <label>MiniMax API Key</label>
-      <input type="password" id="ttsApiKeyInput" placeholder="输入你的 API Key...">
-      <div class="tts-modal-actions">
-        <button class="tts-modal-cancel" id="ttsModalCancel">取消</button>
-        <button class="tts-modal-save" id="ttsModalSave">保存</button>
+        <button class="edit-modal-cancel" id="editModalCancel" type="button">取消</button>
+        <button class="edit-modal-save" id="editModalSave" type="button">保存</button>
       </div>
     </div>
   </div>
