@@ -503,28 +503,31 @@ async function loadHeatmap() {
   } catch { el.heatmap.innerHTML = ''; }
 }
 
+function localDateKey(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 function renderHeatmap(data) {
   const weeks = 12, cellSize = 13, gap = 2, total = cellSize + gap;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
+  const todayDay = today.getDay() === 0 ? 6 : today.getDay() - 1; // Mon=0
 
   // Build day map
   const dayMap = {};
-  let maxCount = 1;
   data.forEach(([dateStr, count]) => {
     dayMap[dateStr] = count;
-    if (count > maxCount) maxCount = count;
   });
-
-  // Warm color palette (transparent → yellow → orange → red → dark red)
-  const colors = [
-    'rgba(255,255,255,.06)',
-    '#4d3800',
-    '#804d00',
-    '#cc6600',
-    '#e68a00',
-    '#ffaa00'
-  ];
+  const firstDay = new Date(today);
+  firstDay.setDate(firstDay.getDate() - ((weeks - 1) * 7 + todayDay));
+  const firstKey = localDateKey(firstDay);
+  const todayKey = localDateKey(today);
+  const maxCount = Math.max(1, ...data
+    .filter(([dateStr]) => dateStr >= firstKey && dateStr <= todayKey)
+    .map(([, count]) => count));
 
   const cols = weeks;
   const rows = 7;
@@ -536,16 +539,16 @@ function renderHeatmap(data) {
   for (let wi = 0; wi < cols; wi++) {
     for (let di = 0; di < 7; di++) {
       // Calculate date for this cell
-      const todayDay = today.getDay() === 0 ? 6 : today.getDay() - 1; // Mon=0
       const daysAgo = (cols - 1 - wi) * 7 + (todayDay - di);
       const d = new Date(today);
       d.setDate(d.getDate() - daysAgo);
-      const key = d.toISOString().split('T')[0];
+      if (d > today) continue;
+      const key = localDateKey(d);
       const count = dayMap[key] || 0;
-      const intensity = count === 0 ? 0 : Math.min(5, Math.ceil((count / maxCount) * 5));
+      const opacity = count === 0 ? 0.08 : 0.28 + Math.sqrt(count / maxCount) * 0.72;
       const x = wi * total + 1;
       const y = di * total + 1;
-      svg += `<rect x="${x}" y="${y}" width="${cellSize}" height="${cellSize}" rx="2" fill="${colors[intensity]}" data-date="${key}" data-count="${count}"></rect>`;
+      svg += `<rect x="${x}" y="${y}" width="${cellSize}" height="${cellSize}" rx="2" fill="var(--green)" fill-opacity="${opacity.toFixed(2)}" data-date="${key}" data-count="${count}"></rect>`;
     }
   }
   svg += '</svg>';
@@ -557,15 +560,17 @@ function renderHeatmap(data) {
   el.heatmap.appendChild(tooltip);
 
   el.heatmap.querySelectorAll('rect').forEach(rect => {
-    rect.addEventListener('mouseenter', (e) => {
+    rect.addEventListener('mouseenter', () => {
       const date = rect.dataset.date;
       const count = rect.dataset.count;
       tooltip.textContent = `${date}：${count} 张卡片`;
       tooltip.classList.add('visible');
       const r = rect.getBoundingClientRect();
       const c = el.heatmap.getBoundingClientRect();
-      tooltip.style.left = `${r.left - c.left + r.width / 2 - tooltip.offsetWidth / 2}px`;
-      tooltip.style.top = `${r.top - c.top - tooltip.offsetHeight - 4}px`;
+      const left = r.left - c.left + r.width / 2 - tooltip.offsetWidth / 2;
+      const top = r.top - c.top - tooltip.offsetHeight - 4;
+      tooltip.style.left = `${Math.max(0, Math.min(left, c.width - tooltip.offsetWidth))}px`;
+      tooltip.style.top = `${top >= 0 ? top : r.bottom - c.top + 4}px`;
     });
     rect.addEventListener('mouseleave', () => {
       tooltip.classList.remove('visible');
@@ -578,15 +583,15 @@ function renderHeatmap(data) {
       if (count === 0) return;
       // Convert date to Unix ms timestamp range (start of day to end of day)
       const dayStart = new Date(date + 'T00:00:00');
-      const dayEnd = new Date(date + 'T23:59:59');
+      const dayEnd = new Date(dayStart);
+      dayEnd.setDate(dayEnd.getDate() + 1);
       const startMs = dayStart.getTime();
-      const endMs = dayEnd.getTime();
+      const endMs = dayEnd.getTime() - 1;
       const query = `rid:${startMs}:${endMs}`;
       setFilter(query, `${date} 复习的卡片 (${count}张)`);
       // Highlight the clicked cell
-      el.heatmap.querySelectorAll('rect').forEach(r => r.removeAttribute('stroke'));
-      rect.setAttribute('stroke', '#ffaa00');
-      rect.setAttribute('stroke-width', '2');
+      el.heatmap.querySelectorAll('rect.selected').forEach(r => r.classList.remove('selected'));
+      rect.classList.add('selected');
       // Close sidebar on mobile
       if (window.innerWidth <= 768) {
         el.sidebar.classList.remove('open');
@@ -628,12 +633,12 @@ function computeReviewStats(data, dayMap) {
   let currentStreak = 0;
   let checkDate = new Date(today);
   // If no reviews today, start checking from yesterday
-  const todayKey = checkDate.toISOString().split('T')[0];
+  const todayKey = localDateKey(checkDate);
   if (!dayMap[todayKey] || dayMap[todayKey] === 0) {
     checkDate.setDate(checkDate.getDate() - 1);
   }
   while (true) {
-    const key = checkDate.toISOString().split('T')[0];
+    const key = localDateKey(checkDate);
     if (dayMap[key] && dayMap[key] > 0) {
       currentStreak++;
       checkDate.setDate(checkDate.getDate() - 1);
@@ -888,6 +893,7 @@ function setFilter(query, label) {
 function clearFilter() {
   state.currentFilter = '';
   el.filterInfo.style.display = 'none';
+  el.heatmap.querySelectorAll('rect.selected').forEach(rect => rect.classList.remove('selected'));
   document.querySelectorAll('.tag-row.active, .deck-item.active, .flag-item.active').forEach(el => el.classList.remove('active'));
   el.navAll.classList.add('active');
   loadNotes('*');

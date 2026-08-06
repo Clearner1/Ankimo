@@ -204,6 +204,7 @@ textarea {
 }
 
 .heatmap-container {
+  position: relative;
   min-height: 34px;
   margin-top: 14px;
   overflow: visible;
@@ -217,14 +218,18 @@ textarea {
 }
 
 .heatmap-container svg rect {
-  fill: var(--green-soft);
   stroke: var(--rail);
   stroke-width: 1;
-  transition: fill var(--transition);
+  transition: fill-opacity var(--transition);
 }
 
 .heatmap-container svg rect:hover {
-  fill: var(--green);
+  fill-opacity: 1;
+}
+
+.heatmap-container svg rect.selected {
+  stroke: var(--green-dark);
+  stroke-width: 2;
 }
 
 .heatmap-tooltip {
