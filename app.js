@@ -63,7 +63,10 @@ const state = {
   blurEnabled: localStorage.getItem('ankimo_blur_enabled') !== 'false', // default true
   noteMode: 'memo',
   flagListExpanded: localStorage.getItem('ankimo_flags_expanded') === 'true',
-  lastCreatedNoteId: null
+  lastCreatedNoteId: null,
+  connectionState: 'checking',
+  syncState: 'idle',
+  eventsBound: false
 };
 
 // ===== DOM Refs =====
@@ -72,6 +75,7 @@ const el = {
   tagTree: $('tagTree'), pinnedTags: $('pinnedTags'), deckList: $('deckList'),
   notesList: $('notesList'), tagSearchInput: $('tagSearchInput'),
   moreTagsToggle: $('moreTagsToggle'), moreTagsCount: $('moreTagsCount'),
+  moreTagsLabel: $('moreTagsToggle')?.querySelector('span:not(.more-tags-count)'),
   searchInput: $('searchInput'), deckSelect: $('deckSelect'), modelSelect: $('modelSelect'),
   tagInput: $('tagInput'), frontInput: $('frontInput'), backInput: $('backInput'),
   inputCard: $('inputCard'),
@@ -84,22 +88,99 @@ const el = {
   navAll: $('navAll'), navDaily: $('navDaily'),
   blurToggleBtn: $('blurToggleBtn'),
   searchBox: $('searchBox'), searchToggle: $('searchToggle'), searchClose: $('searchClose'),
-  flagHeader: $('flagHeader'), flagList: $('flagList'),
+  connectionStatus: $('connectionStatus'), connectionStatusText: $('connectionStatusText'),
+  modeDescription: $('modeDescription'), streamCount: $('streamCount'),
+  tagHeader: $('tagHeader'), tagContent: $('tagContent'),
+  deckHeader: $('deckHeader'), flagHeader: $('flagHeader'), flagList: $('flagList'),
   noteModeMemo: $('noteModeMemo'), noteModeQa: $('noteModeQa'),
-  noteMode: $('noteMode'), advancedSettings: $('advancedSettings')
+  advancedToggle: $('advancedToggle'), advancedControls: $('advancedControls')
 };
+
+const modeDescriptions = {
+  memo: '短笔记会保存到 Ankimo 牌组，保存后暂停，不进入日常复习。',
+  qa: '问答卡会保留所选牌组，正常参与 Anki 日常复习。'
+};
+
+const connectionStateClasses = [
+  'checking', 'connected', 'disconnected',
+  'status-checking', 'status-connected', 'status-disconnected',
+  'is-checking', 'is-connected', 'is-disconnected'
+];
+
+function setConnectionStatus(status, message) {
+  if (!el.connectionStatus) return;
+  const messages = {
+    checking: '正在检查本地 Anki',
+    connected: '已连接本地 Anki',
+    disconnected: '无法连接本地 AnkiConnect。请打开 Anki 并检查 AnkiConnect 后重试。'
+  };
+  const nextStatus = messages[status] ? status : 'disconnected';
+  const nextMessage = message || messages[nextStatus];
+  el.connectionStatus.classList.remove(...connectionStateClasses);
+  el.connectionStatus.classList.add(nextStatus, `status-${nextStatus}`, `is-${nextStatus}`);
+  el.connectionStatus.dataset.state = nextStatus;
+  el.connectionStatus.setAttribute('aria-label', `AnkiConnect 连接状态：${nextMessage}`);
+  if (el.connectionStatusText) el.connectionStatusText.textContent = nextMessage;
+  state.connectionState = nextStatus;
+}
+
+const syncStateClasses = [
+  'sync-busy', 'sync-success', 'sync-error',
+  'status-busy', 'status-success', 'status-error',
+  'is-busy', 'is-success', 'is-error'
+];
+
+function setSyncStatus(status) {
+  if (!el.syncBtn) return;
+  const nextStatus = ['busy', 'success', 'error'].includes(status) ? status : 'idle';
+  el.syncBtn.classList.remove(...syncStateClasses);
+  if (nextStatus !== 'idle') {
+    el.syncBtn.classList.add(`sync-${nextStatus}`, `status-${nextStatus}`, `is-${nextStatus}`);
+  }
+  el.syncBtn.dataset.state = nextStatus;
+  el.syncBtn.setAttribute('aria-busy', String(nextStatus === 'busy'));
+  state.syncState = nextStatus;
+}
+
+function updateStreamCount() {
+  if (!el.streamCount) return;
+  const count = state.noteIds.length;
+  el.streamCount.textContent = count === 0 ? '没有符合条件的笔记' : `共 ${count} 条笔记`;
+}
+
+function setSectionExpanded(header, content, expanded) {
+  if (!header) return;
+  const isExpanded = Boolean(expanded);
+  header.classList.toggle('collapsed', !isExpanded);
+  header.setAttribute('aria-expanded', String(isExpanded));
+  if (content) {
+    content.hidden = !isExpanded;
+    content.style.display = isExpanded ? '' : 'none';
+  }
+}
+
+function setMoreTagsExpanded(expanded) {
+  const isExpanded = Boolean(expanded);
+  if (el.tagTree) el.tagTree.classList.toggle('collapsed', !isExpanded);
+  if (el.moreTagsToggle) el.moreTagsToggle.setAttribute('aria-expanded', String(isExpanded));
+  if (el.moreTagsLabel) el.moreTagsLabel.textContent = isExpanded ? '收起标签' : '更多标签';
+}
 
 // ===== Initialize =====
 async function init() {
+  setConnectionStatus('checking');
   try {
+    setupEvents();
     await loadPinnedTags();
     await Promise.all([loadTags(), loadDecks(), loadModels(), loadStats(), loadHeatmap()]);
     applyNoteModeUI();
-    await loadNotes('*');
-    setupEvents();
+    const notesLoaded = await loadNotes('*');
+    if (!notesLoaded) throw new Error('无法加载笔记');
+    setConnectionStatus('connected');
   } catch (e) {
     console.error('Init error:', e);
-    showToast('无法连接 AnkiConnect，请确保 Anki 已打开', 'error');
+    setConnectionStatus('disconnected');
+    showToast('无法连接 AnkiConnect，请打开 Anki 并检查 AnkiConnect 后重试', 'error');
   }
 }
 
@@ -191,8 +272,7 @@ function renderAllTags(filter = '') {
   el.moreTagsCount.textContent = `(${state.allTags.length})`;
   // If searching, auto-expand
   if (filterLower) {
-    el.tagTree.classList.remove('collapsed');
-    el.moreTagsToggle.querySelector('span').textContent = '▾ 更多标签';
+    setMoreTagsExpanded(true);
   }
 }
 
@@ -222,27 +302,28 @@ function renderTagNodes(nodes, container, prefix, isPinnedSection) {
     row.className = 'tag-row';
     row.style.paddingLeft = `${12 + (prefix ? prefix.split('::').length * 16 : 0)}px`;
     row.innerHTML = `
-      <span class="tag-toggle">${hasChildren ? '▸' : ''}</span>
-      <span class="tag-icon">#</span>
-      <span class="tag-name">${name}</span>
-      <span class="tag-pin ${isPinned ? 'pinned' : ''}" data-tag="${escHtml(fullTag)}">${isPinned ? '★' : '☆'}</span>
+      <button class="tag-filter-button" type="button" aria-label="按标签筛选 ${escHtml(fullTag)}"${hasChildren ? ' aria-expanded="true"' : ''}>
+        <span class="tag-toggle${hasChildren ? '' : ' is-empty'}" aria-hidden="true">${tagToggleIcon(true, hasChildren)}</span>
+        <span class="tag-icon" aria-hidden="true"></span>
+        <span class="tag-name">${escHtml(name)}</span>
+      </button>
+      <button class="tag-pin ${isPinned ? 'pinned' : ''}" data-tag="${escHtml(fullTag)}" type="button" aria-label="${isPinned ? '取消固定' : '固定'}标签 ${escHtml(fullTag)}" aria-pressed="${isPinned}"></button>
     `;
-    row.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (e.target.closest('.tag-pin')) {
-        togglePinTag(fullTag);
-        return;
-      }
+    const filterButton = row.querySelector('.tag-filter-button');
+    filterButton.addEventListener('click', (e) => {
       if (hasChildren && e.target.closest('.tag-toggle')) {
         const childEl = node.querySelector('.tag-children');
         if (childEl) {
-          childEl.classList.toggle('collapsed');
-          row.querySelector('.tag-toggle').textContent = childEl.classList.contains('collapsed') ? '▸' : '▾';
+          setTagNodeExpanded(filterButton, childEl, childEl.classList.contains('collapsed'));
         }
         return;
       }
       setFilter(`tag:${fullTag}`, `标签: ${fullTag}`);
       setActiveItem(row, '.tag-row');
+    });
+    row.querySelector('.tag-pin').addEventListener('click', (e) => {
+      e.stopPropagation();
+      togglePinTag(fullTag);
     });
     node.appendChild(row);
     if (hasChildren) {
@@ -253,6 +334,20 @@ function renderTagNodes(nodes, container, prefix, isPinnedSection) {
     }
     container.appendChild(node);
   });
+}
+
+function tagToggleIcon(expanded, hasChildren) {
+  if (!hasChildren) return '';
+  const path = expanded ? 'M1 1l5 5 5-5' : 'M1 1l5 5 5 5';
+  return `<svg viewBox="0 0 12 12" width="12" height="12" focusable="false"><path d="${path}" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.25" /></svg>`;
+}
+
+function setTagNodeExpanded(row, childEl, expanded) {
+  const isExpanded = Boolean(expanded);
+  childEl.classList.toggle('collapsed', !isExpanded);
+  row.setAttribute('aria-expanded', String(isExpanded));
+  const toggle = row.querySelector('.tag-toggle');
+  if (toggle) toggle.innerHTML = tagToggleIcon(isExpanded, true);
 }
 
 // ===== Decks =====
@@ -287,10 +382,20 @@ async function loadDecks() {
     if (el.deckList) {
       const item = document.createElement('div');
       item.className = 'deck-item';
-      item.innerHTML = `<span class="deck-icon">•</span><span>${escHtml(d)}</span>`;
-      item.addEventListener('click', () => {
+      item.setAttribute('role', 'button');
+      item.setAttribute('tabindex', '0');
+      item.setAttribute('aria-label', `按牌组筛选 ${d}`);
+      item.innerHTML = `<span class="deck-icon" aria-hidden="true"></span><span>${escHtml(d)}</span>`;
+      const filterDeck = () => {
         setFilter(`deck:"${d}"`, `牌组: ${d}`);
         setActiveItem(item, '.deck-item');
+      };
+      item.addEventListener('click', filterDeck);
+      item.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          filterDeck();
+        }
       });
       el.deckList.appendChild(item);
     }
@@ -334,6 +439,7 @@ function setAnswerVisibility(hidden) {
 
 function applyNoteModeUI() {
   const isMemo = state.noteMode === 'memo';
+  if (el.modeDescription) el.modeDescription.textContent = modeDescriptions[state.noteMode];
   if (el.frontInput) {
     el.frontInput.placeholder = isMemo ? '现在的想法是…' : '正面 / 问题...';
     el.frontInput.setAttribute('aria-label', isMemo ? '笔记内容' : '问题');
@@ -357,13 +463,18 @@ function applyNoteModeUI() {
     }
   }
 
-  [el.noteModeMemo, el.noteModeQa].forEach(button => {
-    if (!button) return;
-    const active = (button === el.noteModeMemo && isMemo) || (button === el.noteModeQa && !isMemo);
-    button.classList.toggle('active', active);
-    button.setAttribute('aria-pressed', active ? 'true' : 'false');
+  [el.noteModeMemo, el.noteModeQa].forEach(input => {
+    if (!input) return;
+    const active = (input === el.noteModeMemo && isMemo) || (input === el.noteModeQa && !isMemo);
+    input.checked = active;
+    input.setAttribute('aria-checked', String(active));
+    input.removeAttribute('aria-pressed');
+    const label = document.querySelector(`label[for="${input.id}"]`);
+    if (label) {
+      label.classList.toggle('active', active);
+      label.dataset.checked = String(active);
+    }
   });
-  if (el.noteMode && 'value' in el.noteMode) el.noteMode.value = state.noteMode;
   el.inputCard?.classList.toggle('memo-mode', isMemo);
   el.inputCard?.classList.toggle('qa-mode', !isMemo);
 }
@@ -567,6 +678,8 @@ async function loadNotes(query) {
   el.notesList.innerHTML = '';
   el.loading.style.display = 'flex';
   el.emptyState.style.display = 'none';
+  if (el.streamCount) el.streamCount.textContent = '正在加载笔记';
+  let loaded = false;
   try {
     // Card-level queries (rid:, flag:) need findCards → cardsToNotes
     const isFlagQuery = /^flag:\d+$/.test(query);
@@ -614,17 +727,22 @@ async function loadNotes(query) {
     }
     state.noteIds.reverse(); // newest first
     el.statNotes.textContent = state.noteIds.length;
+    updateStreamCount();
     if (state.noteIds.length === 0) {
       el.emptyState.style.display = 'block';
     } else {
       await loadMoreNotes();
     }
+    loaded = true;
   } catch (e) {
     console.error('Load notes error:', e);
+    setConnectionStatus('disconnected');
+    if (el.streamCount) el.streamCount.textContent = '笔记加载失败，请检查本地 Anki 连接后重试';
     showToast('加载笔记失败: ' + e.message, 'error');
   }
   el.loading.style.display = 'none';
   state.loading = false;
+  return loaded;
 }
 
 async function loadMoreNotes() {
@@ -635,6 +753,7 @@ async function loadMoreNotes() {
   const notes = await anki.notesInfo(batch);
   notes.forEach(note => renderNoteCard(note));
   state.notesLoaded = end;
+  updateStreamCount();
 }
 
 function noteFieldValue(field) {
@@ -649,13 +768,15 @@ function isBlankHtml(value) {
 }
 
 function createNoteCard(note) {
-  const card = document.createElement('div');
+  const card = document.createElement('article');
   card.className = 'note-card';
   card.dataset.noteId = note.noteId;
   const fields = Object.entries(note.fields || {}).slice(0, 2);
   const frontField = fields[0] || ['', ''];
   const backField = fields[1] || ['', ''];
   const hasAnswer = !isBlankHtml(backField[1]);
+  const noteTypeLabel = hasAnswer ? '问答卡' : '不复习';
+  const noteTypeClass = hasAnswer ? 'note-type-qa' : 'note-type-memo';
   const fieldItems = hasAnswer
     ? [{ label: '问题', value: frontField[1], answer: false },
       { label: '答案', value: backField[1], answer: true }]
@@ -663,7 +784,7 @@ function createNoteCard(note) {
   const fieldsHtml = fieldItems.map(item => `
     <div class="note-field${item.answer ? ' answer-field' : ''}">
       <div class="note-field-label">${item.label}</div>
-      <div class="note-field-content${item.answer ? ' blurred' : ''}">${sanitizeHtml(noteFieldValue(item.value))}</div>
+      <div class="note-field-content${item.answer ? ' blurred' : ''}"${item.answer ? ` data-answer-reveal role="button" tabindex="0" aria-expanded="${!state.blurEnabled}" aria-label="${state.blurEnabled ? '显示答案' : '答案已显示'}"` : ''}>${sanitizeHtml(noteFieldValue(item.value))}</div>
     </div>
   `).join('');
   const tagsHtml = (note.tags || []).map(t =>
@@ -671,33 +792,63 @@ function createNoteCard(note) {
   ).join('');
   const modDate = note.mod ? new Date(note.mod * 1000) : null;
   const timeStr = modDate ? formatDate(modDate) : '';
+  const timeHtml = modDate && !Number.isNaN(modDate.getTime())
+    ? `<time class="note-time" datetime="${modDate.toISOString()}">${timeStr}</time>`
+    : '<span class="note-time"></span>';
+  const modelHtml = note.modelName
+    ? `<span class="note-model">模板：${escHtml(note.modelName)}</span>`
+    : '';
   card.innerHTML = `
     <div class="note-actions">
-      <button class="edit-btn" data-id="${note.noteId}">编辑</button>
-      <button class="delete-btn" data-id="${note.noteId}">删除</button>
+      <button class="edit-btn" data-id="${note.noteId}" type="button" aria-label="编辑笔记 ${note.noteId}">编辑</button>
+      <button class="delete-btn" data-id="${note.noteId}" type="button" aria-label="删除笔记 ${note.noteId}">删除</button>
     </div>
     ${fieldsHtml}
     <div class="note-meta">
       ${tagsHtml}
-      <span class="note-deck">${escHtml(note.modelName || '')}</span>
-      <span class="note-time">${timeStr}</span>
+      <span class="note-type ${noteTypeClass}">${noteTypeLabel}</span>
+      ${modelHtml}
+      ${timeHtml}
     </div>
   `;
 
   // Only answers are blurred. Memo cards have no answer section at all.
-  card.querySelector('.answer-field .note-field-content')?.addEventListener('click', (event) => {
+  const answerField = card.querySelector('[data-answer-reveal]');
+  const toggleAnswer = (event) => {
+    if (el.notesList?.classList.contains('show-answers')) return;
     const field = event.currentTarget;
     if (field.classList.contains('blurred')) {
       field.classList.remove('blurred');
       field.classList.add('revealed');
+      field.setAttribute('aria-expanded', 'true');
+      field.setAttribute('aria-label', '隐藏答案');
     } else {
       field.classList.remove('revealed');
       field.classList.add('blurred');
+      field.setAttribute('aria-expanded', 'false');
+      field.setAttribute('aria-label', '显示答案');
+    }
+  };
+  answerField?.addEventListener('click', toggleAnswer);
+  answerField?.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      toggleAnswer(event);
     }
   });
   card.querySelectorAll('.note-tag').forEach(tag => {
-    tag.addEventListener('click', () => {
+    const filterTag = () => {
       setFilter(`tag:${tag.dataset.tag}`, `标签: ${tag.dataset.tag}`);
+    };
+    tag.setAttribute('role', 'button');
+    tag.setAttribute('tabindex', '0');
+    tag.setAttribute('aria-label', `按标签筛选 ${tag.dataset.tag}`);
+    tag.addEventListener('click', filterTag);
+    tag.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        filterTag();
+      }
     });
   });
   card.querySelector('.edit-btn')?.addEventListener('click', (event) => {
@@ -711,6 +862,9 @@ function createNoteCard(note) {
       await anki.deleteNotes([parseInt(event.currentTarget.dataset.id, 10)]);
       card.style.animation = 'fadeOut .3s ease';
       setTimeout(() => card.remove(), 300);
+      state.noteIds = state.noteIds.filter(id => String(id) !== String(note.noteId));
+      el.statNotes.textContent = state.noteIds.length;
+      updateStreamCount();
       showToast('已删除');
     } catch (err) { showToast('删除失败: ' + err.message, 'error'); }
   });
@@ -864,21 +1018,28 @@ function setupScroll() {
 
 // ===== Events =====
 function setupEvents() {
+  if (state.eventsBound) return;
   el.saveBtn.addEventListener('click', createNote);
   el.clearFilter.addEventListener('click', clearFilter);
   el.syncBtn.addEventListener('click', async () => {
     el.syncBtn.disabled = true;
-    el.syncBtn.textContent = '同步中';
+    setSyncStatus('busy');
     try {
       await anki.sync();
-      showToast('同步完成');
       await Promise.all([loadTags(), loadDecks(), loadModels(), loadStats(), loadHeatmap()]);
-      await loadNotes(state.currentQuery || '*');
+      const notesLoaded = await loadNotes(state.currentQuery || '*');
+      if (!notesLoaded) throw new Error('笔记刷新失败');
+      setSyncStatus('success');
+      setConnectionStatus('connected');
+      showToast('同步完成');
     }
-    catch (e) { showToast('同步失败: ' + e.message, 'error'); }
+    catch (e) {
+      setSyncStatus('error');
+      setConnectionStatus('disconnected');
+      showToast('同步失败: ' + e.message, 'error');
+    }
     finally {
       el.syncBtn.disabled = false;
-      el.syncBtn.textContent = '同步';
     }
   });
   el.navAll.addEventListener('click', () => {
@@ -907,68 +1068,75 @@ function setupEvents() {
       else clearFilter();
     }
   });
-  // Note mode controls are optional while the new input DOM is being merged.
-  el.noteModeMemo?.addEventListener('click', noteModeMemo);
-  el.noteModeQa?.addEventListener('click', noteModeQa);
-  el.noteMode?.addEventListener('change', (e) => {
+  [el.noteModeMemo, el.noteModeQa].forEach(input => input?.addEventListener('change', (e) => {
+    if (!e.target.checked) return;
     e.target.value === 'qa' ? noteModeQa() : noteModeMemo();
-  });
+  }));
   applyNoteModeUI();
   // Sidebar toggle for mobile
   el.menuBtn.addEventListener('click', () => {
-    el.sidebar.classList.toggle('open');
-    el.overlay.classList.toggle('active');
+    const isOpen = el.sidebar.classList.toggle('open');
+    el.overlay.classList.toggle('active', isOpen);
+    el.menuBtn.setAttribute('aria-expanded', String(isOpen));
+    el.menuBtn.setAttribute('aria-label', isOpen ? '关闭侧栏' : '打开侧栏');
   });
   el.overlay.addEventListener('click', () => {
     el.sidebar.classList.remove('open');
     el.overlay.classList.remove('active');
+    el.menuBtn.setAttribute('aria-expanded', 'false');
+    el.menuBtn.setAttribute('aria-label', '打开侧栏');
   });
   // Mobile search expand/collapse
   el.searchToggle.addEventListener('click', () => {
     el.searchBox.classList.add('expanded');
+    el.searchToggle.setAttribute('aria-expanded', 'true');
     el.searchInput.focus();
   });
   el.searchClose.addEventListener('click', () => {
     el.searchBox.classList.remove('expanded');
+    el.searchToggle.setAttribute('aria-expanded', 'false');
   });
   el.searchInput.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
       el.searchBox.classList.remove('expanded');
+      el.searchToggle.setAttribute('aria-expanded', 'false');
       el.searchInput.blur();
     }
   });
   // Tag section collapse
-  $('tagHeader').addEventListener('click', () => {
-    $('tagHeader').classList.toggle('collapsed');
-    $('tagContent').style.display = $('tagHeader').classList.contains('collapsed') ? 'none' : '';
-  });
+  if (el.tagHeader) {
+    setSectionExpanded(el.tagHeader, el.tagContent, el.tagHeader.getAttribute('aria-expanded') !== 'false');
+    el.tagHeader.addEventListener('click', () => {
+      setSectionExpanded(el.tagHeader, el.tagContent, el.tagHeader.getAttribute('aria-expanded') !== 'true');
+    });
+  }
   // Tag search
   el.tagSearchInput.addEventListener('input', () => {
     renderAllTags(el.tagSearchInput.value.trim());
   });
   // More tags toggle
+  setMoreTagsExpanded(el.moreTagsToggle.getAttribute('aria-expanded') === 'true');
   el.moreTagsToggle.addEventListener('click', () => {
-    const isCollapsed = el.tagTree.classList.toggle('collapsed');
-    el.moreTagsToggle.querySelector('span').textContent = isCollapsed ? '▸ 更多标签' : '▾ 更多标签';
+    setMoreTagsExpanded(el.moreTagsToggle.getAttribute('aria-expanded') !== 'true');
   });
   // Section collapse
-  $('deckHeader').addEventListener('click', () => {
-    $('deckHeader').classList.toggle('collapsed');
-    el.deckList.style.display = $('deckHeader').classList.contains('collapsed') ? 'none' : '';
-  });
+  if (el.deckHeader) {
+    setSectionExpanded(el.deckHeader, el.deckList, el.deckHeader.getAttribute('aria-expanded') === 'true');
+    el.deckHeader.addEventListener('click', () => {
+      setSectionExpanded(el.deckHeader, el.deckList, el.deckHeader.getAttribute('aria-expanded') !== 'true');
+    });
+  }
   // Flag section collapse. Only Anki flags 1/2/3 are part of Ankimo's flow.
   const supportedFlags = new Set(['1', '2', '3']);
   document.querySelectorAll('.flag-item').forEach(item => {
     if (!supportedFlags.has(item.dataset.flag)) item.remove();
   });
   if (el.flagHeader && el.flagList) {
-    el.flagHeader.classList.toggle('collapsed', !state.flagListExpanded);
-    el.flagList.style.display = state.flagListExpanded ? '' : 'none';
+    setSectionExpanded(el.flagHeader, el.flagList, state.flagListExpanded);
     el.flagHeader.addEventListener('click', () => {
       state.flagListExpanded = !state.flagListExpanded;
       localStorage.setItem('ankimo_flags_expanded', String(state.flagListExpanded));
-      el.flagHeader.classList.toggle('collapsed', !state.flagListExpanded);
-      el.flagList.style.display = state.flagListExpanded ? '' : 'none';
+      setSectionExpanded(el.flagHeader, el.flagList, state.flagListExpanded);
     });
   }
   // Flag click to filter
@@ -999,6 +1167,8 @@ function setupEvents() {
   }
   syncBlurBtnUI();
   setupScroll();
+  setSyncStatus('idle');
+  state.eventsBound = true;
 }
 
 // ===== Utilities =====
@@ -1121,7 +1291,7 @@ async function saveEdit() {
     await refreshNoteCard(editState.noteId);
 
     closeEditModal();
-    showToast('笔记已更新 ✓');
+    showToast('笔记已更新');
   } catch (e) {
     showToast('保存失败: ' + e.message, 'error');
   }
