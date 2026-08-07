@@ -28,10 +28,14 @@ npm run dev
 {
   "webCorsOriginList": [
     "http://127.0.0.1:5173",
-    "http://localhost:5173"
+    "http://localhost:5173",
+    "http://127.0.0.1:3000",
+    "http://localhost:3000"
   ]
 }
 ```
+
+保留 AnkiConnect 现有的其他配置项，只更新 `webCorsOriginList`。远程域名访问会通过同源 `/anki` 反代，不需要加入该列表。
 
 ## 工程检查
 

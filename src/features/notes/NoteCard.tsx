@@ -54,12 +54,12 @@ export function NoteCard({ note, blurAnswers = true, onEdit, onDelete, onTagClic
             className={`note-field-content ${answerBlurred ? 'blurred' : 'revealed'}`}
             value={back}
             data-answer-reveal="true"
-            role="button"
-            tabIndex={0}
+            role={blurAnswers ? 'button' : undefined}
+            tabIndex={blurAnswers ? 0 : undefined}
             aria-expanded={!answerBlurred}
-            aria-label={answerBlurred ? '显示答案' : '隐藏答案'}
-            onClick={toggleAnswer}
-            onKeyDown={event => activate(event, toggleAnswer)}
+            aria-label={blurAnswers ? answerBlurred ? '显示答案' : '隐藏答案' : '答案已显示'}
+            onClick={blurAnswers ? toggleAnswer : undefined}
+            onKeyDown={blurAnswers ? event => activate(event, toggleAnswer) : undefined}
           />
         </div>
       )}

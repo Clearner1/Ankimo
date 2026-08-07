@@ -205,6 +205,7 @@ export default function App() {
       />
 
       <EditModal
+        key={editingNoteId ?? 'closed'}
         noteId={editingNoteId}
         client={client}
         onClose={() => setEditingNoteId(null)}

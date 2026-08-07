@@ -148,15 +148,13 @@ export function Composer({ client = defaultClient, onCreated, onToast }: Compose
       <input id="noteModeMemo" className="visually-hidden" type="radio" name="noteMode" value="memo" aria-describedby="modeDescription" checked={isMemo} onChange={() => setMode('memo')} />
       <input id="noteModeQa" className="visually-hidden" type="radio" name="noteMode" value="qa" aria-describedby="modeDescription" checked={!isMemo} onChange={() => setMode('qa')} />
       <div className="composer-head">
-        <div>
-          <h2 id="composerTitle">快速记录</h2>
-          <p id="modeDescription" className="composer-hint">{isMemo ? '短笔记会保存到 Ankimo 牌组，保存后暂停，不进入日常复习。' : '问答卡会保留所选牌组，正常参与 Anki 日常复习。'}</p>
-        </div>
+        <h2 id="composerTitle">快速记录</h2>
         <div className="mode-switch" role="group" aria-label="笔记类型" aria-describedby="modeDescription">
           <label className={`mode-label ${isMemo ? 'active' : ''}`} htmlFor="noteModeMemo">短笔记</label>
           <label className={`mode-label ${!isMemo ? 'active' : ''}`} htmlFor="noteModeQa">问答卡</label>
         </div>
       </div>
+      <p id="modeDescription" className="composer-hint">{isMemo ? '短笔记会保存到 Ankimo 牌组，保存后暂停，不进入日常复习。' : '问答卡会保留所选牌组，正常参与 Anki 日常复习。'}</p>
       <div className="composer-fields">
         <textarea id="frontInput" value={front} onChange={event => setFront(event.target.value)} placeholder={isMemo ? '现在的想法是…' : '正面 / 问题...'} aria-label={isMemo ? '笔记内容' : '问题'} />
         <textarea id="backInput" value={back} onChange={event => setBack(event.target.value)} placeholder={isMemo ? '' : '背面 / 答案...'} aria-label={isMemo ? '笔记模式不使用答案' : '答案'} disabled={isMemo} aria-hidden={isMemo} />

@@ -4,7 +4,7 @@ import { cardIdsInReviewRange } from '../../domain/heatmap';
 import { classifyQuery, parseReviewDateQuery, type QueryRoute } from '../../domain/queries';
 
 export type NotesApi = Pick<AnkiConnect,
-  'findNotes' | 'findCards' | 'cardsToNotes' | 'deckNames' | 'cardReviews' | 'notesInfo' | 'deleteNotes' | 'updateNote'>;
+  'findNotes' | 'findCards' | 'cardsToNotes' | 'deckNames' | 'cardReviews' | 'notesInfo' | 'deleteNotes'>;
 
 export type NotesOptions = {
   client?: NotesApi;
@@ -14,8 +14,6 @@ export type NotesOptions = {
 
 export type NotesState = {
   notes: NoteInfo[];
-  noteIds: number[];
-  query: string;
   count: number;
   loading: boolean;
   loadingMore: boolean;
@@ -25,7 +23,6 @@ export type NotesState = {
   reload: () => void;
   loadMore: () => Promise<void>;
   deleteNote: (noteId: number) => Promise<void>;
-  updateNote: (noteId: number, fields: Record<string, string>, tags: string[]) => Promise<void>;
 };
 
 const defaultClient = new AnkiConnect();
@@ -57,7 +54,6 @@ export async function findNoteIds(query: string, client: NotesApi): Promise<numb
 export function useNotes({ client = defaultClient, initialQuery = '*', batchSize = 30 }: NotesOptions = {}): NotesState {
   const [notes, setNotes] = useState<NoteInfo[]>([]);
   const [noteIds, setNoteIds] = useState<number[]>([]);
-  const [query, setQueryState] = useState(initialQuery);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [loaded, setLoaded] = useState(0);
@@ -94,7 +90,6 @@ export function useNotes({ client = defaultClient, initialQuery = '*', batchSize
   const load = useCallback(async (nextQuery: string) => {
     const requestId = ++request.current;
     queryRef.current = nextQuery;
-    setQueryState(nextQuery);
     setLoading(true);
     setError(null);
     setNotes([]);
@@ -128,7 +123,14 @@ export function useNotes({ client = defaultClient, initialQuery = '*', batchSize
     void load(queryRef.current);
   }, [load]);
 
-  const loadMore = useCallback(() => loadBatch(idsRef.current, request.current), [loadBatch]);
+  const loadMore = useCallback(async () => {
+    setError(null);
+    try {
+      await loadBatch(idsRef.current, request.current);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    }
+  }, [loadBatch]);
 
   const deleteNote = useCallback(async (noteId: number) => {
     await client.deleteNotes([noteId]);
@@ -143,16 +145,8 @@ export function useNotes({ client = defaultClient, initialQuery = '*', batchSize
     }
   }, [client, notes]);
 
-  const updateNote = useCallback(async (noteId: number, fields: Record<string, string>, tags: string[]) => {
-    await client.updateNote(noteId, fields, tags);
-    const updated = (await client.notesInfo([noteId]))[0];
-    if (updated) setNotes(current => current.map(note => note.noteId === noteId ? updated : note));
-  }, [client]);
-
   return {
     notes,
-    noteIds,
-    query,
     count: noteIds.length,
     loading,
     loadingMore,
@@ -161,7 +155,6 @@ export function useNotes({ client = defaultClient, initialQuery = '*', batchSize
     setQuery,
     reload,
     loadMore,
-    deleteNote,
-    updateNote
+    deleteNote
   };
 }
