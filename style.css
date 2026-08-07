@@ -1282,6 +1282,16 @@ textarea {
   width: 100%;
 }
 
+.load-more {
+  display: flex;
+  min-height: 44px;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: var(--green-dark);
+}
+
 .note-card {
   position: relative;
   display: block;

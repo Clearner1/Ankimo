@@ -7,7 +7,6 @@ export type NoteInfo = {
   tags?: string[];
   mod?: number;
 };
-export type CardInfo = { cardId: number; note: number; deckName: string } & Record<string, unknown>;
 export type CardReview = [reviewTime: number, cardId: number, ...details: number[]];
 export type ReviewCountByDay = [date: string, count: number];
 
@@ -43,7 +42,6 @@ export class AnkiConnect {
   findNotes(query: string) { return this.invoke<number[]>('findNotes', { query }); }
   findCards(query: string) { return this.invoke<number[]>('findCards', { query }); }
   cardsToNotes(cards: number[]) { return this.invoke<number[]>('cardsToNotes', { cards }); }
-  cardsInfo(cards: number[]) { return this.invoke<CardInfo[]>('cardsInfo', { cards }); }
   // startID=0 is required to include historical reviews before local filtering.
   cardReviews(deck: string, startID = 0) { return this.invoke<CardReview[]>('cardReviews', { deck, startID }); }
   notesInfo(notes: number[]) { return this.invoke<NoteInfo[]>('notesInfo', { notes }); }
