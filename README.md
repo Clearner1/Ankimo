@@ -45,6 +45,14 @@ npm run check
 
 该命令依次执行 ESLint、TypeScript、Vitest、Knip 和生产构建。浏览器 E2E 由人工验收负责，不包含在自动检查中。
 
+GitHub Pull Request 和 `main` 更新会运行同一套检查。合并后，在开发工作区执行本地部署：
+
+```bash
+npm run deploy:local
+```
+
+部署脚本只构建远端 `main`，全部检查通过后才更新同级 `Ankimo` 生产目录，并保留上一份静态文件用于失败回滚。Caddy 始终读取 `Ankimo/dist`，无需重新加载。
+
 ## Docker 部署
 
 生产镜像先用 Vite 构建静态文件，再由 Nginx 托管，并通过 `/anki` 反向代理到宿主机 AnkiConnect。
