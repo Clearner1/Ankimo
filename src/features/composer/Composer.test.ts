@@ -4,6 +4,7 @@ import {
   buildComposerFields,
   appendMemoImages,
   base64FromDataUrl,
+  composerTextToHtml,
   createMediaFilename,
   imageExtensionForType,
   loadComposerPreferences,
@@ -73,6 +74,42 @@ describe('buildComposerFields', () => {
       问题: 'question', 答案: 'answer', 引用: ''
     });
     expect(buildComposerFields(['引用'], 'memo', 'ignored', 'memo')).toEqual({ 引用: 'memo' });
+  });
+});
+
+describe('composer note formatting', () => {
+  it('preserves whitespace, escapes HTML text, and sends formatted fields to Anki', async () => {
+    const front = '  第一行  \n\n第二行 <tag> &  ';
+    const back = '答案  \n  下一行 >';
+    let submittedFields: Record<string, string> | undefined;
+
+    expect(composerTextToHtml(front))
+      .toBe('<span style="white-space: pre-wrap">  第一行  \n\n第二行 &lt;tag&gt; &amp;  </span>');
+
+    const result = await writeComposerNote({
+      storeMediaFileBase64: async () => false,
+      deleteMediaFile: async () => null,
+      addNote: async (_deck, _model, fields) => {
+        submittedFields = fields;
+        return 7;
+      }
+    }, {
+      deck: 'Ankimo',
+      model: QA_MODEL,
+      fieldNames: ['问题', '答案', '引用'],
+      front,
+      back,
+      mode: 'qa',
+      tags: [],
+      images: []
+    });
+
+    expect(result).toEqual({ noteId: 7 });
+    expect(submittedFields).toEqual({
+      问题: '<span style="white-space: pre-wrap">  第一行  \n\n第二行 &lt;tag&gt; &amp;  </span>',
+      答案: '<span style="white-space: pre-wrap">答案  \n  下一行 &gt;</span>',
+      引用: ''
+    });
   });
 });
 
