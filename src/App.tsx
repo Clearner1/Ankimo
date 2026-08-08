@@ -103,7 +103,7 @@ export default function App() {
     try {
       await client.sync();
       await loadNavigation();
-      notes.reload();
+      await notes.reload();
       setReviewVersion(version => version + 1);
       setConnectionState('connected');
       setSyncState('success');
@@ -125,7 +125,7 @@ export default function App() {
   };
 
   const refreshAfterWrite = async () => {
-    notes.reload();
+    await notes.reload();
     try {
       await loadNavigation();
     } catch {

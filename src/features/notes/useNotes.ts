@@ -20,7 +20,7 @@ export type NotesState = {
   hasMore: boolean;
   error: string | null;
   setQuery: (query: string) => void;
-  reload: () => void;
+  reload: () => Promise<void>;
   loadMore: () => Promise<void>;
   deleteNote: (noteId: number) => Promise<void>;
 };
@@ -51,6 +51,24 @@ export async function findNoteIds(query: string, client: NotesApi): Promise<numb
   return newestFirstUniqueNoteIds(cards.length ? await client.cardsToNotes(cards) : []);
 }
 
+export function createBatchCoordinator() {
+  let active: symbol | null = null;
+
+  return {
+    invalidate() { active = null; },
+    acquire() {
+      if (active !== null) return null;
+      const token = Symbol('notes batch');
+      active = token;
+      return () => {
+        if (active !== token) return false;
+        active = null;
+        return true;
+      };
+    }
+  };
+}
+
 export function useNotes({ client = defaultClient, initialQuery = '*', batchSize = 30 }: NotesOptions = {}): NotesState {
   const [notes, setNotes] = useState<NoteInfo[]>([]);
   const [noteIds, setNoteIds] = useState<number[]>([]);
@@ -61,12 +79,14 @@ export function useNotes({ client = defaultClient, initialQuery = '*', batchSize
   const request = useRef(0);
   const idsRef = useRef<number[]>([]);
   const loadedRef = useRef(0);
-  const loadingMoreRef = useRef(false);
+  const batchCoordinatorRef = useRef(createBatchCoordinator());
   const queryRef = useRef(initialQuery);
 
   const loadBatch = useCallback(async (ids: number[], requestId: number) => {
-    if (loadingMoreRef.current || loadedRef.current >= ids.length) return;
-    loadingMoreRef.current = true;
+    if (request.current !== requestId) return;
+    if (loadedRef.current >= ids.length) return;
+    const finish = batchCoordinatorRef.current.acquire();
+    if (!finish) return;
     setLoadingMore(true);
     const start = loadedRef.current;
     const end = Math.min(start + batchSize, ids.length);
@@ -82,17 +102,20 @@ export function useNotes({ client = defaultClient, initialQuery = '*', batchSize
       loadedRef.current = end;
       setLoaded(end);
     } finally {
-      loadingMoreRef.current = false;
-      setLoadingMore(false);
+      if (finish()) setLoadingMore(false);
     }
   }, [batchSize, client]);
 
   const load = useCallback(async (nextQuery: string) => {
     const requestId = ++request.current;
     queryRef.current = nextQuery;
+    batchCoordinatorRef.current.invalidate();
+    idsRef.current = [];
     setLoading(true);
+    setLoadingMore(false);
     setError(null);
     setNotes([]);
+    setNoteIds([]);
     setLoaded(0);
     loadedRef.current = 0;
     try {
@@ -120,15 +143,19 @@ export function useNotes({ client = defaultClient, initialQuery = '*', batchSize
   }, [load]);
 
   const reload = useCallback(() => {
-    void load(queryRef.current);
+    return load(queryRef.current);
   }, [load]);
 
   const loadMore = useCallback(async () => {
+    const requestId = request.current;
+    const ids = idsRef.current;
     setError(null);
     try {
-      await loadBatch(idsRef.current, request.current);
+      await loadBatch(ids, requestId);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
+      if (request.current === requestId) {
+        setError(cause instanceof Error ? cause.message : String(cause));
+      }
     }
   }, [loadBatch]);
 
