@@ -103,7 +103,7 @@ if $api_service_installed; then
 
   api_health_status=000
   for attempt in {1..10}; do
-    api_health_status="$(curl -sS --max-time 2 -o /dev/null -w '%{http_code}' http://127.0.0.1:8787/health || true)"
+    api_health_status="$(curl --noproxy '*' -sS --max-time 2 -o /dev/null -w '%{http_code}' http://127.0.0.1:8787/health || true)"
     if [[ "$api_health_status" == "200" || "$api_health_status" == "503" ]]; then break; fi
     sleep 1
   done
@@ -115,7 +115,7 @@ if $api_service_installed; then
   fi
 fi
 
-local_status="$(curl -sS --max-time 5 -o /dev/null -w '%{http_code}' -H 'Host: ankimo.yzr-stack.top' http://127.0.0.1:8080/ || true)"
+local_status="$(curl --noproxy '*' -sS --max-time 5 -o /dev/null -w '%{http_code}' -H 'Host: ankimo.yzr-stack.top' http://127.0.0.1:8080/ || true)"
 if [[ "$local_status" != "200" && "$local_status" != "401" ]]; then
   mv "$live_dir/dist" "$stage_dir/failed-dist"
   if $had_current; then mv "$previous_dir" "$live_dir/dist"; fi

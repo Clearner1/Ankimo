@@ -62,6 +62,7 @@ cat > "$tmp_plist" <<PLIST
   <array>
     <string>$escaped_node_path</string>
     <string>$escaped_api_script</string>
+    <string>--serve</string>
   </array>
   <key>WorkingDirectory</key>
   <string>$escaped_live_dir</string>

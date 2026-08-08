@@ -5,7 +5,7 @@
   "version": "0.0.0",
   "scripts": {
     "dev": "vite",
-    "api": "node server/ankimo-api.mts",
+    "api": "node server/ankimo-api.mts --serve",
     "lint": "eslint src server vite.config.mts eslint.config.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

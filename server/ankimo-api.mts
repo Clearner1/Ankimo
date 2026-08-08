@@ -1,6 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
-import { fileURLToPath } from 'node:url';
 import { AnkiConnect } from '../src/api/ankiConnect.ts';
 import { createTextNote, MEMO_MODEL, QA_MODEL } from '../src/domain/noteWriting.ts';
 
@@ -369,6 +368,6 @@ export function createAnkimoApiServer(options: AnkimoApiOptions = {}): Server {
 
 export const openApiDocument = OPENAPI_DOCUMENT;
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+if (process.argv.includes('--serve')) {
   createAnkimoApiServer().listen(API_PORT, API_HOST);
 }
