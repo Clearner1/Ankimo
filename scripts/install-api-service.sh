@@ -9,11 +9,15 @@ if [[ ! -d "$live_dir" ]]; then
   exit 1
 fi
 live_dir="$(cd "$live_dir" && pwd -P)"
-api_script="$live_dir/server/ankimo-api.mts"
-if [[ ! -f "$api_script" ]]; then
-  echo "API entrypoint not found: $api_script" >&2
-  exit 1
-fi
+source_api_script="$live_dir/server/ankimo-api.mts"
+source_anki_client="$live_dir/src/api/ankiConnect.ts"
+source_note_writer="$live_dir/src/domain/noteWriting.ts"
+for source_file in "$source_api_script" "$source_anki_client" "$source_note_writer"; do
+  if [[ ! -f "$source_file" ]]; then
+    echo "API runtime source not found: $source_file" >&2
+    exit 1
+  fi
+done
 
 node_path="$(command -v node || true)"
 if [[ -z "$node_path" || "$node_path" != /* ]]; then
@@ -27,6 +31,8 @@ launch_domain="gui/$user_id"
 service_target="$launch_domain/$label"
 launch_agents_dir="$HOME/Library/LaunchAgents"
 log_dir="$HOME/Library/Logs/Ankimo"
+runtime_dir="$HOME/Library/Application Support/Ankimo/runtime"
+api_script="$runtime_dir/server/ankimo-api.mts"
 plist_path="$launch_agents_dir/$label.plist"
 
 xml_escape() {
@@ -40,11 +46,14 @@ xml_escape() {
 
 escaped_node_path="$(xml_escape "$node_path")"
 escaped_api_script="$(xml_escape "$api_script")"
-escaped_live_dir="$(xml_escape "$live_dir")"
 escaped_stdout="$(xml_escape "$log_dir/api.out.log")"
 escaped_stderr="$(xml_escape "$log_dir/api.err.log")"
 
-mkdir -p "$launch_agents_dir" "$log_dir"
+mkdir -p "$launch_agents_dir" "$log_dir" "$runtime_dir/server" "$runtime_dir/src/api" "$runtime_dir/src/domain"
+cp "$source_api_script" "$runtime_dir/server/ankimo-api.mts"
+cp "$source_anki_client" "$runtime_dir/src/api/ankiConnect.ts"
+cp "$source_note_writer" "$runtime_dir/src/domain/noteWriting.ts"
+chmod 600 "$runtime_dir/server/ankimo-api.mts" "$runtime_dir/src/api/ankiConnect.ts" "$runtime_dir/src/domain/noteWriting.ts"
 tmp_plist="$(mktemp "${TMPDIR:-/tmp}/$label.XXXXXX")"
 cleanup() {
   if [[ -n "${tmp_plist:-}" && -e "$tmp_plist" ]]; then rm -f "$tmp_plist"; fi
@@ -64,8 +73,6 @@ cat > "$tmp_plist" <<PLIST
     <string>$escaped_api_script</string>
     <string>--serve</string>
   </array>
-  <key>WorkingDirectory</key>
-  <string>$escaped_live_dir</string>
   <key>RunAtLoad</key>
   <true/>
   <key>KeepAlive</key>
