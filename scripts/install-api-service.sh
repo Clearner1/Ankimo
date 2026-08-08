@@ -90,6 +90,9 @@ chmod 600 "$tmp_plist"
 launchctl bootout "$service_target" 2>/dev/null || true
 mv -f "$tmp_plist" "$plist_path"
 tmp_plist=""
-launchctl bootstrap "$launch_domain" "$plist_path"
+if ! launchctl bootstrap "$launch_domain" "$plist_path"; then
+  sleep 1
+  launchctl bootstrap "$launch_domain" "$plist_path"
+fi
 launchctl kickstart -k "$service_target"
 launchctl print "$service_target"
