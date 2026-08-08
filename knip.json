@@ -1,5 +1,5 @@
 {
-  "entry": ["src/**/*.test.ts"],
+  "entry": ["src/**/*.test.ts", "server/**/*.test.ts"],
   "ignoreExportsUsedInFile": true,
-  "project": ["src/**/*.{ts,tsx}"]
+  "project": ["src/**/*.{ts,tsx}", "server/**/*.{ts,mts}"]
 }

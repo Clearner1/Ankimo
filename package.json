@@ -1,10 +1,12 @@
 {
   "name": "ankimo",
   "private": true,
+  "type": "module",
   "version": "0.0.0",
   "scripts": {
     "dev": "vite",
-    "lint": "eslint src vite.config.mts eslint.config.mjs",
+    "api": "node server/ankimo-api.mts",
+    "lint": "eslint src server vite.config.mts eslint.config.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "deadcode": "knip",

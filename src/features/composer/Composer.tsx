@@ -1,5 +1,15 @@
 import { useEffect, useState } from 'react';
 import { AnkiConnect } from '../../api/ankiConnect';
+import {
+  buildNoteFields,
+  MEMO_MODEL,
+  noteTextToHtml,
+  QA_MODEL,
+  suspendMemoNote,
+  type NoteMode
+} from '../../domain/noteWriting';
+
+export { MEMO_MODEL, QA_MODEL, suspendMemoNote, type NoteMode } from '../../domain/noteWriting';
 
 export type ComposerToast = (message: string, type?: 'success' | 'error') => void;
 
@@ -13,11 +23,7 @@ export type ComposerProps = {
   onToast?: ComposerToast;
 };
 
-export type NoteMode = 'memo' | 'qa';
-
 export const MEMO_DECK = 'Ankimo';
-export const MEMO_MODEL = 'XXHK - 划线';
-export const QA_MODEL = 'XXHK - 问答';
 export const COMPOSER_PREFERENCES_KEY = 'ankimo_composer_preferences_v1';
 export const MAX_COMPOSER_IMAGES = 4;
 export const MAX_COMPOSER_IMAGE_SIZE = 10 * 1024 * 1024;
@@ -134,9 +140,7 @@ export function appendMemoImages(front: string, filenames: readonly string[]): s
 }
 
 export function composerTextToHtml(value: string): string {
-  if (!value) return '';
-  const escaped = value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  return `<span style="white-space: pre-wrap">${escaped}</span>`;
+  return noteTextToHtml(value);
 }
 
 function errorMessage(cause: unknown): string {
@@ -144,26 +148,7 @@ function errorMessage(cause: unknown): string {
 }
 
 export function buildComposerFields(fieldNames: readonly string[], front: string, back: string, mode: NoteMode): Record<string, string> {
-  return Object.fromEntries(fieldNames.map((name, index) => [name, index === 0 ? front : mode === 'qa' && index === 1 ? back : '']));
-}
-
-export async function findMemoCards(client: Pick<AnkiConnect, 'findCards'>, noteId: number, attempts = 3, delayMs = 120): Promise<number[]> {
-  for (let attempt = 0; attempt < attempts; attempt++) {
-    const cards = await client.findCards(`nid:${noteId}`);
-    if (cards.length) return cards;
-    if (attempt < attempts - 1) await new Promise(resolve => setTimeout(resolve, delayMs));
-  }
-  return [];
-}
-
-export async function suspendMemoNote(client: Pick<AnkiConnect, 'findCards' | 'suspend' | 'areSuspended'>, noteId: number): Promise<void> {
-  const cards = await findMemoCards(client, noteId);
-  if (!cards.length) throw new Error(`已创建 note ${noteId}，但没有找到对应卡片，无法确认暂停状态`);
-  await client.suspend(cards);
-  const suspended = await client.areSuspended(cards);
-  if (suspended.length !== cards.length || !suspended.every(Boolean)) {
-    throw new Error(`已创建 note ${noteId}，但回读确认并非所有卡片都已暂停`);
-  }
+  return buildNoteFields(fieldNames, front, back, mode);
 }
 
 function readPendingImage(file: File, extension: ImageExtension): Promise<PendingImage> {
