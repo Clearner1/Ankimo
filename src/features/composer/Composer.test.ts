@@ -2,11 +2,18 @@ import { describe, expect, it } from 'vitest';
 import {
   availableOption,
   buildComposerFields,
+  appendMemoImages,
+  base64FromDataUrl,
+  createMediaFilename,
+  imageExtensionForType,
   loadComposerPreferences,
   MEMO_MODEL,
+  MAX_COMPOSER_IMAGE_SIZE,
   QA_MODEL,
   saveComposerPreference,
   suspendMemoNote,
+  validateImageFile,
+  writeComposerNote,
   type ComposerPreferences
 } from './Composer';
 
@@ -66,6 +73,59 @@ describe('buildComposerFields', () => {
       问题: 'question', 答案: 'answer', 引用: ''
     });
     expect(buildComposerFields(['引用'], 'memo', 'ignored', 'memo')).toEqual({ 引用: 'memo' });
+  });
+});
+
+describe('composer image helpers', () => {
+  it('accepts supported images, extracts base64, and builds Anki media HTML', () => {
+    expect(imageExtensionForType('image/png')).toBe('png');
+    expect(imageExtensionForType('image/jpeg')).toBe('jpg');
+    expect(imageExtensionForType('image/webp')).toBe('webp');
+    expect(imageExtensionForType('image/gif')).toBeNull();
+    expect(validateImageFile({ type: 'image/png', size: MAX_COMPOSER_IMAGE_SIZE })).toBeNull();
+    expect(validateImageFile({ type: 'image/png', size: MAX_COMPOSER_IMAGE_SIZE + 1 })).toContain('10MB');
+    expect(validateImageFile({ type: 'image/gif', size: 1 })).toContain('PNG');
+    expect(base64FromDataUrl('data:image/png;base64,abc123')).toBe('abc123');
+    expect(createMediaFilename('jpg', 'test-uuid')).toBe('ankimo-test-uuid.jpg');
+    expect(appendMemoImages('想法', ['ankimo-one.png', 'ankimo-two.webp']))
+      .toBe('想法\n\n<img src="ankimo-one.png" alt="" />\n\n<img src="ankimo-two.webp" alt="" />');
+    expect(appendMemoImages('', ['ankimo-one.png'])).toBe('<img src="ankimo-one.png" alt="" />');
+  });
+
+  it('cleans partial uploads but preserves media when the note write status is unknown', async () => {
+    const deleted: string[] = [];
+    let uploads = 0;
+    let addNoteCalls = 0;
+    const baseInput = {
+      deck: 'Ankimo',
+      model: MEMO_MODEL,
+      fieldNames: ['引用'],
+      front: '',
+      back: '',
+      mode: 'memo' as const,
+      tags: [],
+      images: [
+        { name: 'one.png', extension: 'png' as const, dataUrl: 'data:image/png;base64,b25l' },
+        { name: 'two.png', extension: 'png' as const, dataUrl: 'data:image/png;base64,dHdv' }
+      ]
+    };
+    const partialUpload = await writeComposerNote({
+      storeMediaFileBase64: async filename => ++uploads === 1 ? filename : false,
+      deleteMediaFile: async filename => { deleted.push(filename); return null; },
+      addNote: async () => { addNoteCalls++; return 7; }
+    }, baseInput);
+    expect(partialUpload).toMatchObject({ error: expect.stringContaining('图片上传失败') });
+    expect(deleted).toHaveLength(2);
+    expect(addNoteCalls).toBe(0);
+
+    deleted.length = 0;
+    const unknownWrite = await writeComposerNote({
+      storeMediaFileBase64: async filename => filename,
+      deleteMediaFile: async filename => { deleted.push(filename); return null; },
+      addNote: async () => { throw new Error('network lost'); }
+    }, { ...baseInput, images: baseInput.images.slice(0, 1) });
+    expect(unknownWrite).toMatchObject({ error: expect.stringContaining('写入状态未知') });
+    expect(deleted).toEqual([]);
   });
 });
 

@@ -70,4 +70,14 @@ export class AnkiConnect {
     const result = await this.invoke<string | null>('retrieveMediaFile', { filename });
     return result ? decodeURIComponent(escape(atob(result))) : null;
   }
+  storeMediaFileBase64(filename: string, base64Data: string) {
+    return this.invoke<string | false | null>('storeMediaFile', { filename, data: base64Data });
+  }
+  async retrieveMediaFileBase64(filename: string) {
+    const result = await this.invoke<string | false | null>('retrieveMediaFile', { filename });
+    return result || null;
+  }
+  deleteMediaFile(filename: string) {
+    return this.invoke<null>('deleteMediaFile', { filename });
+  }
 }

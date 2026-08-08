@@ -1057,6 +1057,94 @@ textarea {
   color: var(--faint);
 }
 
+.composer-images {
+  display: grid;
+  gap: 12px;
+  padding: 14px 0 4px;
+  border-top: 1px solid var(--line);
+}
+
+.composer-image-dropzone {
+  display: flex;
+  min-height: 52px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 9px 12px;
+  border: 1px dashed var(--line-strong);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+  cursor: pointer;
+  transition: border-color var(--transition), background var(--transition), color var(--transition);
+}
+
+.composer-image-dropzone:hover {
+  border-color: var(--green);
+  background: var(--green-wash);
+  color: var(--graphite);
+}
+
+#imageInput:disabled + .composer-image-dropzone {
+  cursor: default;
+  opacity: 0.6;
+}
+
+#imageInput:focus-visible + .composer-image-dropzone {
+  outline: 3px solid color-mix(in srgb, var(--focus) 32%, transparent);
+  outline-offset: 2px;
+}
+
+.composer-image-dropzone small {
+  color: var(--faint);
+  font-size: 10px;
+}
+
+.composer-image-previews {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 10px;
+}
+
+.composer-image-preview {
+  position: relative;
+  min-width: 0;
+  aspect-ratio: 4 / 3;
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: var(--paper-strong);
+}
+
+.composer-image-preview img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.composer-image-remove {
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
+  padding: 4px 7px;
+  border: 0;
+  background: color-mix(in srgb, var(--graphite) 82%, transparent);
+  color: var(--paper-strong);
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.composer-image-remove:hover {
+  background: var(--danger);
+}
+
+.composer-image-remove:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
 #noteModeMemo:checked ~ .composer-fields #backInput {
   display: none;
 }
