@@ -1,135 +1,84 @@
-# 📝 Ankimo
+# Ankimo
 
-一个类似 [Flomo](https://flomoapp.com/) 风格的 Anki 笔记管理器，通过 [AnkiConnect](https://foosoft.net/projects/anki-connect/) 插件连接你的 Anki，让你在浏览器中以更优雅的方式浏览、搜索和创建笔记。
+一个连接本地 Anki 的轻量笔记流：用接近 Flomo 的方式快速记录短笔记，也可以创建正常参与复习的问答卡。
 
-![AnkiConnect](https://img.shields.io/badge/AnkiConnect-v6-blue?style=flat-square) ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?style=flat-square) ![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)
+## 能力
 
-## ✨ 功能特性
+- 标签树、置顶标签、牌组与三色旗标筛选
+- Anki 搜索语法、编辑、删除与连续加载
+- 短笔记自动进入 `Ankimo` 牌组并暂停
+- 问答卡保留牌组、模板和正常复习语义
+- 最近 12 周复习热力图、统计与同步
+- 桌面和移动端响应式界面
 
-- 🏷️ **标签树** — 支持 `::` 层级结构，可折叠展开，点击按标签筛选笔记
-- 📚 **牌组列表** — 展示所有牌组，点击按牌组筛选
-- 📝 **笔记瀑布流** — 按时间倒序展示，无限滚动加载
-- ✏️ **快速记录** — 默认写短笔记，也可切换为问答卡片
-- 🗂️ **短笔记收集** — 自动保存到 `Ankimo` 牌组并暂停，不进入日常复习
-- 🚩 **三色旗标** — 折叠显示红旗、橙旗、绿旗，按学习队列快速筛选
-- 🔍 **搜索** — 支持 Anki 原生搜索语法（如 `tag:Java`、`deck:Default`）
-- 🟩 **复习热力图** — 可视化展示最近 16 周的复习记录
-- 📊 **统计面板** — 笔记数、标签数、今日复习数
-- 🔄 **同步** — 一键触发 Anki 同步
-- 📱 **响应式** — 支持移动端自适应布局
-- ⌨️ **快捷键** — `Ctrl/Cmd + K` 快速聚焦搜索框
-- 🔒 **Basic Auth** — Nginx 层认证，保护你的数据安全
+Anki 是唯一数据源。网页通过 AnkiConnect v6 读写本地 Anki，不维护第二份笔记数据库。
 
-## 📋 前置要求
+## 本地开发
 
-1. **Anki** — 已安装 [Anki](https://apps.ankiweb.net/) 桌面版
-2. **AnkiConnect 插件** — 在 Anki 中安装 AnkiConnect 插件（代码：`2055492159`）
-   - 打开 Anki → 工具 → 插件 → 获取插件 → 输入 `2055492159` → 确定
-   - 重启 Anki
-3. **配置 AnkiConnect CORS** — 允许本地服务器访问 AnkiConnect API
-   - 打开 Anki → 工具 → 插件 → 选中 AnkiConnect → 配置
-   - 将 `webCorsOriginList` 修改为：
-   ```json
-   "webCorsOriginList": [
-       "http://localhost",
-       "http://localhost:3000",
-       "http://localhost:8080",
-       "http://127.0.0.1:3000"
-   ]
-   ```
-   - 点击确定，重启 Anki
-
-## 🚀 快速开始
-
-### 方法一：直接打开（本地使用）
+前置条件：Node.js 22、已启动的 Anki，以及已安装并启用的 AnkiConnect。
 
 ```bash
-git clone https://github.com/Clearner1/ankimo.git
-cd ankimo
-
-# 启动本地服务器
-python -m http.server 3000
-
-# 浏览器访问 http://127.0.0.1:3000
+npm ci
+npm run dev
 ```
 
-### 方法二：Docker 部署（推荐，支持远程访问）
+默认访问 `http://127.0.0.1:5173`。本地访问会直接连接 `http://127.0.0.1:8765`，因此 AnkiConnect 的 `webCorsOriginList` 需要允许开发地址，例如：
+
+```json
+{
+  "webCorsOriginList": [
+    "http://127.0.0.1:5173",
+    "http://localhost:5173",
+    "http://127.0.0.1:3000",
+    "http://localhost:3000"
+  ]
+}
+```
+
+保留 AnkiConnect 现有的其他配置项，只更新 `webCorsOriginList`。远程域名访问会通过同源 `/anki` 反代，不需要加入该列表。
+
+## 工程检查
 
 ```bash
-git clone https://github.com/Clearner1/ankimo.git
-cd ankimo
+npm run check
+```
 
-# 生成密码文件（用户名: anki，密码自定义）
+该命令依次执行 ESLint、TypeScript、Vitest、Knip 和生产构建。浏览器 E2E 由人工验收负责，不包含在自动检查中。
+
+## Docker 部署
+
+生产镜像先用 Vite 构建静态文件，再由 Nginx 托管，并通过 `/anki` 反向代理到宿主机 AnkiConnect。
+
+```bash
 htpasswd -c .htpasswd anki
-
-# 启动容器
 docker compose up -d --build
-
-# 浏览器访问 http://127.0.0.1:3000
 ```
 
-### 方法三：Docker + Cloudflare Tunnel（手机远程访问）
+访问 `http://127.0.0.1:3000`。`.htpasswd` 以只读卷挂载，不会写入 Git、构建上下文或镜像。
 
-在方法二的基础上，配置 Cloudflare Tunnel 实现内网穿透：
+如需经 Cloudflare Tunnel 远程访问，只需将现有 Tunnel 上游保持为本机 `http://localhost:3000`。Anki 和 AnkiConnect 仍运行在这台本地设备上。
 
-```yaml
-# ~/.cloudflared/config.yml 添加一条 ingress 规则
-ingress:
-  - hostname: ankimo.你的域名.com
-    service: http://localhost:3000
+## 目录
+
+```text
+src/
+├── api/             AnkiConnect 客户端
+├── domain/          查询、标签、笔记与复习纯逻辑
+└── features/        composer、navigation、notes、review
+style.css            既有 Impeccable UI 设计系统
+nginx.conf           静态托管、Basic Auth 与 /anki 反代
 ```
 
-然后添加 DNS 记录并重启 tunnel：
+`src/App.tsx` 只组合功能模块和少量跨模块状态；没有额外的路由器、全局状态库或客户端缓存层。
 
-```bash
-# 添加 CNAME 记录
-cloudflared tunnel route dns <TUNNEL_ID> ankimo.你的域名.com
+## 人工验收重点
 
-# 重启 tunnel
-brew services restart cloudflared
-```
+- 本地与远程环境的 AnkiConnect 连接状态
+- 短笔记创建后确实暂停，问答卡正常进入复习
+- 标签、旗标、牌组、搜索和热力图日期筛选
+- 编辑、删除、同步、答案隐藏与连续加载
+- 768px 移动侧栏和 480px 手机布局
 
-> **⚠️ 注意：** 
-> - 启动前请确保 Anki 已打开并且 AnkiConnect 插件已启用（默认监听 `127.0.0.1:8765`）
-> - 如果 QUIC 协议被防火墙拦截，在 config.yml 中添加 `protocol: http2`
-
-## 🏗️ 项目结构
-
-```
-ankimo/
-├── index.html         # 页面结构
-├── style.css          # 样式（暗色侧边栏 + 亮色内容区）
-├── app.js             # 应用逻辑（API 通信、标签树、笔记渲染）
-├── Dockerfile         # Docker 镜像构建
-├── docker-compose.yml # Docker Compose 编排
-├── nginx.conf         # Nginx 配置（静态托管 + API 反代 + Basic Auth）
-├── .htpasswd          # 密码文件（不上传 Git）
-├── .gitignore
-└── README.md
-```
-
-## 🔧 技术栈
-
-- **纯前端** — HTML + CSS + JavaScript，无需构建工具，无框架依赖
-- **AnkiConnect API v6** — 通过 HTTP POST 请求与 Anki 通信
-- **Nginx** — 静态文件托管 + AnkiConnect 反向代理 + Basic Auth
-- **Docker** — 一键部署
-- **Cloudflare Tunnel** — 内网穿透，手机远程访问
-
-## 📖 使用说明
-
-| 操作 | 说明 |
-|------|------|
-| 点击左侧标签 | 按标签筛选笔记 |
-| 点击左侧牌组 | 按牌组筛选笔记 |
-| 搜索框输入 | 支持 Anki 搜索语法，如 `tag:Java`、`deck:Default`、`added:1` |
-| 笔记模式 | 写一段短笔记；自动保存到 `Ankimo` 牌组并暂停 |
-| 问答模式 | 填写问题和答案；创建正常参与复习的卡片 |
-| 高级设置 | 按需覆盖问答卡片使用的牌组和模板 |
-| 笔记卡片上的标签 | 点击可快速按该标签筛选 |
-| 🔄 同步按钮 | 触发 Anki 云同步 |
-| `Cmd/Ctrl + K` | 快速聚焦搜索框 |
-
-## 📄 License
+## License
 
 MIT

@@ -1,2 +1,4 @@
 .htpasswd
 Minimax_OpenAPI/
+node_modules/
+dist/
