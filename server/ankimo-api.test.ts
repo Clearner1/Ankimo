@@ -129,7 +129,7 @@ describe('Ankimo HTTP API', () => {
 
     expect(response.status).toBe(200);
     expect(body.openapi).toBe('3.1.0');
-    expect(body.servers).toEqual([{ url: 'https://api.ankimo.yzr-stack.top' }]);
+    expect(body.servers).toEqual([{ url: 'https://ankimo-api.yzr-stack.top' }]);
     expect(operations).toEqual(['listDecks', 'createMemo', 'createQaCard']);
     expect(body.paths).not.toHaveProperty('/health');
     expect((body.components as Record<string, unknown>)).toHaveProperty('securitySchemes');

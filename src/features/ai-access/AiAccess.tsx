@@ -1,7 +1,7 @@
 import { useState } from 'react';
 
 const AI_TOKEN_PATH = '/api/ai-tokens';
-export const AI_OPENAPI_URL = 'https://api.ankimo.yzr-stack.top/openapi.json';
+export const AI_OPENAPI_URL = 'https://ankimo-api.yzr-stack.top/openapi.json';
 const JSON_HEADERS = {
   Accept: 'application/json',
   'Content-Type': 'application/json'
