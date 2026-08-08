@@ -2,3 +2,4 @@
 Minimax_OpenAPI/
 node_modules/
 dist/
+.deploy/
