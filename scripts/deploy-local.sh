@@ -87,6 +87,12 @@ fi
 
 api_service_label="top.yzr.ankimo.api"
 api_service_target="gui/$(id -u)/$api_service_label"
+api_runtime_dir="$HOME/Library/Application Support/Ankimo/runtime"
+mkdir -p "$api_runtime_dir/server" "$api_runtime_dir/src/api" "$api_runtime_dir/src/domain"
+cp "$live_dir/server/ankimo-api.mts" "$api_runtime_dir/server/ankimo-api.mts"
+cp "$live_dir/src/api/ankiConnect.ts" "$api_runtime_dir/src/api/ankiConnect.ts"
+cp "$live_dir/src/domain/noteWriting.ts" "$api_runtime_dir/src/domain/noteWriting.ts"
+chmod 600 "$api_runtime_dir/server/ankimo-api.mts" "$api_runtime_dir/src/api/ankiConnect.ts" "$api_runtime_dir/src/domain/noteWriting.ts"
 api_service_installed=false
 if command -v launchctl >/dev/null 2>&1 && launchctl print "$api_service_target" >/dev/null 2>&1; then
   api_service_installed=true
