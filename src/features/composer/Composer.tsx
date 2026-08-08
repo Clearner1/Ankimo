@@ -15,8 +15,83 @@ export type ComposerProps = {
 export type NoteMode = 'memo' | 'qa';
 
 export const MEMO_DECK = 'Ankimo';
+export const MEMO_MODEL = 'XXHK - 划线';
+export const QA_MODEL = 'XXHK - 问答';
+export const COMPOSER_PREFERENCES_KEY = 'ankimo_composer_preferences_v1';
+
+export type ComposerPreferences = {
+  memo: { model: string; tags: string };
+  qa: { deck: string; model: string; tags: string };
+};
+
+type ComposerStorage = Pick<Storage, 'getItem' | 'setItem'>;
 
 const defaultClient = new AnkiConnect();
+
+function defaultPreferences(): ComposerPreferences {
+  return {
+    memo: { model: MEMO_MODEL, tags: '' },
+    qa: { deck: '', model: QA_MODEL, tags: '' }
+  };
+}
+
+function composerStorage(storage?: ComposerStorage): ComposerStorage | null {
+  if (storage) return storage;
+  try {
+    return typeof localStorage === 'undefined' ? null : localStorage;
+  } catch {
+    return null;
+  }
+}
+
+function stringValue(value: unknown, fallback = ''): string {
+  return typeof value === 'string' ? value : fallback;
+}
+
+export function loadComposerPreferences(storage?: ComposerStorage): ComposerPreferences {
+  const defaults = defaultPreferences();
+  const target = composerStorage(storage);
+  if (!target) return defaults;
+  try {
+    const parsed: unknown = JSON.parse(target.getItem(COMPOSER_PREFERENCES_KEY) || 'null');
+    if (!parsed || typeof parsed !== 'object') return defaults;
+    const memo = 'memo' in parsed && parsed.memo && typeof parsed.memo === 'object' ? parsed.memo : {};
+    const qa = 'qa' in parsed && parsed.qa && typeof parsed.qa === 'object' ? parsed.qa : {};
+    return {
+      memo: {
+        model: stringValue('model' in memo ? memo.model : undefined, MEMO_MODEL),
+        tags: stringValue('tags' in memo ? memo.tags : undefined)
+      },
+      qa: {
+        deck: stringValue('deck' in qa ? qa.deck : undefined),
+        model: stringValue('model' in qa ? qa.model : undefined, QA_MODEL),
+        tags: stringValue('tags' in qa ? qa.tags : undefined)
+      }
+    };
+  } catch {
+    return defaults;
+  }
+}
+
+export function saveComposerPreference(mode: NoteMode, preferences: ComposerPreferences, storage?: ComposerStorage): void {
+  const target = composerStorage(storage);
+  if (!target) return;
+  try {
+    const saved = loadComposerPreferences(target);
+    const next = mode === 'memo'
+      ? { ...saved, memo: preferences.memo }
+      : { ...saved, qa: preferences.qa };
+    target.setItem(COMPOSER_PREFERENCES_KEY, JSON.stringify(next));
+  } catch {
+    // Preferences are optional; note creation must still succeed without storage.
+  }
+}
+
+export function availableOption(preferred: string, fallback: string, options: readonly string[]): string {
+  if (options.includes(preferred)) return preferred;
+  if (options.includes(fallback)) return fallback;
+  return options[0] || '';
+}
 
 function errorMessage(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
@@ -49,25 +124,41 @@ export function Composer({ client = defaultClient, onCreated, onToast }: Compose
   const [mode, setMode] = useState<NoteMode>('memo');
   const [decks, setDecks] = useState<string[]>([]);
   const [models, setModels] = useState<string[]>([]);
-  const [deck, setDeck] = useState('');
-  const [model, setModel] = useState('');
+  const [preferences, setPreferences] = useState(loadComposerPreferences);
   const [fieldNames, setFieldNames] = useState<string[]>([]);
   const [front, setFront] = useState('');
   const [back, setBack] = useState('');
-  const [tags, setTags] = useState('');
   const [advanced, setAdvanced] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadingFields, setLoadingFields] = useState(false);
   const [saving, setSaving] = useState(false);
+  const model = mode === 'memo' ? preferences.memo.model : preferences.qa.model;
+  const tags = mode === 'memo' ? preferences.memo.tags : preferences.qa.tags;
 
   useEffect(() => {
     let active = true;
     void Promise.all([client.deckNames(), client.modelNames()]).then(([nextDecks, nextModels]) => {
       if (!active) return;
+      const saved = loadComposerPreferences();
+      const memoModel = availableOption(saved.memo.model, MEMO_MODEL, nextModels);
+      const qaModel = availableOption(saved.qa.model, QA_MODEL, nextModels);
       setDecks(nextDecks);
       setModels(nextModels);
-      setDeck(current => current || nextDecks[0] || '');
-      setModel(current => current || nextModels[0] || '');
+      setPreferences(current => ({
+        memo: { ...current.memo, model: memoModel },
+        qa: {
+          ...current.qa,
+          deck: availableOption(saved.qa.deck, '', nextDecks),
+          model: qaModel
+        }
+      }));
+      const missingDefaults = [
+        !nextModels.includes(saved.memo.model) && !nextModels.includes(MEMO_MODEL) ? MEMO_MODEL : null,
+        !nextModels.includes(saved.qa.model) && !nextModels.includes(QA_MODEL) ? QA_MODEL : null
+      ].filter((name): name is string => Boolean(name));
+      if (missingDefaults.length && nextModels.length) {
+        onToast?.(`未找到默认模板 ${missingDefaults.join('、')}，已使用可用模板`, 'error');
+      }
     }).catch(cause => onToast?.(`加载失败: ${errorMessage(cause)}`, 'error')).finally(() => {
       if (active) setLoading(false);
     });
@@ -116,7 +207,7 @@ export function Composer({ client = defaultClient, onCreated, onToast }: Compose
     setSaving(true);
     let noteId: number | null = null;
     try {
-      const selectedDeck = mode === 'memo' ? MEMO_DECK : deck;
+      const selectedDeck = mode === 'memo' ? MEMO_DECK : preferences.qa.deck;
       if (!selectedDeck) throw new Error('请先选择牌组');
       if (mode === 'memo' && !decks.includes(MEMO_DECK)) {
         await client.createDeck(MEMO_DECK);
@@ -129,9 +220,9 @@ export function Composer({ client = defaultClient, onCreated, onToast }: Compose
       noteId = await client.addNote(selectedDeck, model, buildComposerFields(names, trimmedFront, trimmedBack, mode), tags.trim().split(/\s+/).filter(Boolean));
       if (!noteId) throw new Error('AnkiConnect 没有返回 note id，无法确认创建结果');
       if (mode === 'memo') await suspendMemoNote(client, noteId);
+      saveComposerPreference(mode, preferences);
       setFront('');
       setBack('');
-      setTags('');
       onToast?.(mode === 'memo' ? '短笔记已保存，已暂停' : '问答卡片已保存');
       await onCreated?.(noteId);
     } catch (cause) {
@@ -162,7 +253,12 @@ export function Composer({ client = defaultClient, onCreated, onToast }: Compose
       <input id="advancedToggle" className="visually-hidden" type="checkbox" checked={advanced} onChange={event => setAdvanced(event.target.checked)} />
       <div className="composer-footer">
         <div className="tag-input-wrap">
-          <input id="tagInput" value={tags} onChange={event => setTags(event.target.value)} placeholder="添加标签，用空格分隔" aria-label="标签" />
+          <input id="tagInput" value={tags} onChange={event => {
+            const nextTags = event.target.value;
+            setPreferences(current => mode === 'memo'
+              ? { ...current, memo: { ...current.memo, tags: nextTags } }
+              : { ...current, qa: { ...current.qa, tags: nextTags } });
+          }} placeholder="添加标签，用空格分隔" aria-label="标签" />
         </div>
         <div className="composer-actions">
           <label className="advanced-toggle" htmlFor="advancedToggle">高级设置 <span className="advanced-chevron" aria-hidden="true"><svg viewBox="0 0 12 7" width="12" height="7" focusable="false"><path d="M1 1l5 5 5-5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.25" /></svg></span></label>
@@ -171,13 +267,21 @@ export function Composer({ client = defaultClient, onCreated, onToast }: Compose
       </div>
       <div className="advanced-controls">
         <label className="control-field" htmlFor="deckSelect">牌组
-          <select id="deckSelect" value={isMemo ? MEMO_DECK : deck} disabled={isMemo || loading} onChange={event => setDeck(event.target.value)}>
+          <select id="deckSelect" value={isMemo ? MEMO_DECK : preferences.qa.deck} disabled={isMemo || loading} onChange={event => {
+            const nextDeck = event.target.value;
+            setPreferences(current => ({ ...current, qa: { ...current.qa, deck: nextDeck } }));
+          }}>
             {isMemo && !decks.includes(MEMO_DECK) && <option value={MEMO_DECK}>{MEMO_DECK}</option>}
             {decks.map(name => <option key={name} value={name}>{name}</option>)}
           </select>
         </label>
         <label className="control-field" htmlFor="modelSelect">模板
-          <select id="modelSelect" value={model} disabled={loading} onChange={event => setModel(event.target.value)}>
+          <select id="modelSelect" value={model} disabled={loading} onChange={event => {
+            const nextModel = event.target.value;
+            setPreferences(current => mode === 'memo'
+              ? { ...current, memo: { ...current.memo, model: nextModel } }
+              : { ...current, qa: { ...current.qa, model: nextModel } });
+          }}>
             {models.map(name => <option key={name} value={name}>{name}</option>)}
           </select>
         </label>
