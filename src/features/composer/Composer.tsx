@@ -133,6 +133,12 @@ export function appendMemoImages(front: string, filenames: readonly string[]): s
   return [front, ...images].filter(Boolean).join('\n\n');
 }
 
+export function composerTextToHtml(value: string): string {
+  if (!value) return '';
+  const escaped = value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return `<span style="white-space: pre-wrap">${escaped}</span>`;
+}
+
 function errorMessage(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
 }
@@ -226,10 +232,11 @@ export async function writeComposerNote(
 
   let noteId: number | null;
   try {
+    const front = composerTextToHtml(input.front);
     noteId = await client.addNote(
       input.deck,
       input.model,
-      buildComposerFields(input.fieldNames, input.mode === 'memo' ? appendMemoImages(input.front, mediaFilenames) : input.front, input.back, input.mode),
+      buildComposerFields(input.fieldNames, input.mode === 'memo' ? appendMemoImages(front, mediaFilenames) : front, composerTextToHtml(input.back), input.mode),
       input.tags
     );
   } catch (cause) {
@@ -411,8 +418,8 @@ export function Composer({ client = defaultClient, onCreated, onToast }: Compose
         deck: selectedDeck,
         model,
         fieldNames: names,
-        front: trimmedFront,
-        back: trimmedBack,
+        front,
+        back,
         mode,
         tags: tags.trim().split(/\s+/).filter(Boolean),
         images: pendingImages
