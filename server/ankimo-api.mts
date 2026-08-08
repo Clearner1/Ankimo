@@ -43,7 +43,7 @@ class HttpError extends Error {
 const OPENAPI_DOCUMENT = {
   openapi: '3.1.0',
   info: { title: 'Ankimo AI API', version: '1.0.0' },
-  servers: [{ url: 'https://api.ankimo.yzr-stack.top' }],
+  servers: [{ url: 'https://ankimo-api.yzr-stack.top' }],
   components: {
     securitySchemes: {
       bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'temporary token' }
