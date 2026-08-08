@@ -53,6 +53,8 @@ npm run deploy:local
 
 部署脚本只构建远端 `main`，全部检查通过后才更新同级 `Ankimo` 生产目录，并保留上一份静态文件用于失败回滚。Caddy 始终读取 `Ankimo/dist`，无需重新加载。
 
+生产 Mac 使用本地 LaunchAgent 每分钟检查一次 `origin/main`。PR 合并后，监听器会自动调用同一部署脚本；PR 创建和未合并分支不会在本机执行。
+
 ## Docker 部署
 
 生产镜像先用 Vite 构建静态文件，再由 Nginx 托管，并通过 `/anki` 反向代理到宿主机 AnkiConnect。

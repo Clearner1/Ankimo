@@ -1,13 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-dev_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+script_repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+dev_dir="${ANKIMO_DEV_DIR:-$script_repo}"
 live_dir="${ANKIMO_LIVE_DIR:-$(dirname "$dev_dir")/Ankimo}"
 
+if [[ ! -d "$dev_dir" ]]; then
+  echo "Development checkout not found: $dev_dir" >&2
+  exit 1
+fi
 if [[ ! -d "$live_dir/.git" || ! -f "$live_dir/package.json" ]]; then
   echo "Production checkout not found: $live_dir" >&2
   exit 1
 fi
+dev_dir="$(cd "$dev_dir" && pwd -P)"
 live_dir="$(cd "$live_dir" && pwd -P)"
 if [[ "$live_dir" == "$dev_dir" || "$live_dir" == "/" ]]; then
   echo "Refusing unsafe production path: $live_dir" >&2
@@ -26,6 +32,22 @@ if [[ "$(git -C "$dev_dir" remote get-url origin)" != "$(git -C "$live_dir" remo
   exit 1
 fi
 
+deploy_dir="$live_dir/.deploy"
+lock_dir="$deploy_dir/lock"
+mkdir -p "$deploy_dir"
+if ! mkdir "$lock_dir" 2>/dev/null; then
+  echo "Deployment already running; remove $lock_dir only if no deploy process exists" >&2
+  exit 0
+fi
+stage_dir=""
+cleanup() {
+  if [[ -n "$stage_dir" && -d "$stage_dir" ]]; then rm -rf "$stage_dir"; fi
+  rmdir "$lock_dir" 2>/dev/null || true
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
 git -C "$dev_dir" fetch origin main
 git -C "$live_dir" fetch origin main
 target_sha="$(git -C "$dev_dir" rev-parse origin/main)"
@@ -35,7 +57,6 @@ if ! git -C "$live_dir" merge-base --is-ancestor HEAD "$target_sha"; then
 fi
 
 stage_dir="$(mktemp -d "${TMPDIR:-/tmp}/ankimo-deploy.XXXXXX")"
-trap 'rm -rf "$stage_dir"' EXIT
 mkdir "$stage_dir/source"
 git -C "$dev_dir" archive "$target_sha" | tar -x -C "$stage_dir/source"
 
@@ -47,7 +68,6 @@ git -C "$dev_dir" archive "$target_sha" | tar -x -C "$stage_dir/source"
 test -s "$stage_dir/source/dist/index.html"
 
 git -C "$live_dir" merge --ff-only "$target_sha"
-deploy_dir="$live_dir/.deploy"
 next_dir="$deploy_dir/next-$target_sha"
 previous_dir="$deploy_dir/previous"
 mkdir -p "$deploy_dir"
