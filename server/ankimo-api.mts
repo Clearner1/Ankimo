@@ -6,10 +6,14 @@ import { createTextNote, MEMO_MODEL, QA_MODEL } from '../src/domain/noteWriting.
 export const API_HOST = '127.0.0.1';
 export const API_PORT = 8787;
 export const TOKEN_TTL_MS = 15 * 60 * 1000;
+export const CONNECTION_TTL_MS = 2 * 60 * 1000;
 export const MAX_TOKEN_CALLS = 20;
 export const MAX_JSON_BODY_BYTES = 256 * 1024;
 const DEFAULT_DECK = 'mubu';
-const TOKEN_HEADERS = { 'Cache-Control': 'no-store' };
+const PUBLIC_API_URL = 'https://ankimo-api.yzr-stack.top';
+const OPENAPI_URL = `${PUBLIC_API_URL}/openapi.json`;
+const CONNECTION_PREFIX = '/connect/';
+const SECRET_HEADERS = { 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' };
 
 type ApiClient = Pick<AnkiConnect,
   'deckNames' | 'modelFieldNames' | 'addNote' | 'findCards' | 'suspend' | 'areSuspended'>;
@@ -17,6 +21,7 @@ type NoteWriter = typeof createTextNote;
 type JsonObject = Record<string, unknown>;
 type JsonResponse = { status: number; body: JsonObject; headers?: Record<string, string> };
 type IdempotencyRecord = { fingerprint: string; result: Promise<JsonResponse> };
+type ConnectionRecord = { expiresAt: number };
 type TokenRecord = {
   expiresAt: number;
   calls: number;
@@ -43,7 +48,7 @@ class HttpError extends Error {
 const OPENAPI_DOCUMENT = {
   openapi: '3.1.0',
   info: { title: 'Ankimo AI API', version: '1.0.0' },
-  servers: [{ url: 'https://ankimo-api.yzr-stack.top' }],
+  servers: [{ url: PUBLIC_API_URL }],
   components: {
     securitySchemes: {
       bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'temporary token' }
@@ -135,6 +140,14 @@ function sendJson(response: ServerResponse, result: JsonResponse): void {
 
 function hash(value: string): string {
   return createHash('sha256').update(value).digest('hex');
+}
+
+function issueToken(tokens: Map<string, TokenRecord>, now: () => number) {
+  const token = `ank_tmp_${randomBytes(32).toString('base64url')}`;
+  const expiresAt = now() + TOKEN_TTL_MS;
+  tokens.clear();
+  tokens.set(hash(token), { expiresAt, calls: 0, idempotency: new Map() });
+  return { token, expiresAt };
 }
 
 function contentType(request: IncomingMessage): string {
@@ -242,10 +255,18 @@ function withIdempotency(record: TokenRecord, key: string, fingerprint: string, 
   return result;
 }
 
+function connectionCode(pathname: string): string | null {
+  if (!pathname.startsWith(CONNECTION_PREFIX)) return null;
+  const code = pathname.slice(CONNECTION_PREFIX.length);
+  return /^ank_connect_[A-Za-z0-9_-]{43}$/.test(code) ? code : null;
+}
+
 function routeMethods(pathname: string): readonly string[] | undefined {
+  if (connectionCode(pathname)) return ['GET', 'POST'];
   return {
     '/openapi.json': ['GET'],
     '/health': ['GET'],
+    '/api/ai-connections': ['POST'],
     '/api/ai-tokens': ['POST', 'DELETE'],
     '/v1/decks': ['GET'],
     '/v1/memos': ['POST'],
@@ -259,6 +280,7 @@ async function handleRequest(
   client: ApiClient,
   noteWriter: NoteWriter,
   tokens: Map<string, TokenRecord>,
+  connections: Map<string, ConnectionRecord>,
   now: () => number
 ): Promise<void> {
   const pathname = new URL(request.url || '/', 'http://127.0.0.1').pathname;
@@ -271,7 +293,7 @@ async function handleRequest(
   if (!methods.includes(method)) {
     sendJson(response, json(405, { error: { code: 'METHOD_NOT_ALLOWED', message: '请求方法不被支持' } }, {
       Allow: methods.join(', '),
-      ...(pathname === '/api/ai-tokens' ? TOKEN_HEADERS : {})
+      ...((pathname === '/api/ai-tokens' || pathname === '/api/ai-connections' || connectionCode(pathname)) ? SECRET_HEADERS : {})
     }));
     return;
   }
@@ -289,26 +311,96 @@ async function handleRequest(
     }
     return;
   }
+  if (pathname === '/api/ai-connections') {
+    if (contentType(request) !== 'application/json') {
+      request.resume();
+      sendJson(response, { ...errorResponse(new HttpError(415, 'UNSUPPORTED_MEDIA_TYPE', '请求体必须使用 application/json')), headers: SECRET_HEADERS });
+      return;
+    }
+    try {
+      const body = objectBody(await readJson(request));
+      onlyFields(body, []);
+    } catch (error) {
+      sendJson(response, { ...errorResponse(error), headers: SECRET_HEADERS });
+      return;
+    }
+    try {
+      const code = `ank_connect_${randomBytes(32).toString('base64url')}`;
+      const expiresAt = now() + CONNECTION_TTL_MS;
+      connections.clear();
+      connections.set(hash(code), { expiresAt });
+      sendJson(response, json(200, {
+        connectUrl: `${PUBLIC_API_URL}${CONNECTION_PREFIX}${code}`,
+        expiresAt: new Date(expiresAt).toISOString(),
+        expiresIn: CONNECTION_TTL_MS / 1000
+      }, SECRET_HEADERS));
+    } catch {
+      sendJson(response, { ...errorResponse(new Error('connection generation failed')), headers: SECRET_HEADERS });
+    }
+    return;
+  }
   if (pathname === '/api/ai-tokens') {
     request.resume();
     if (method === 'DELETE') {
       const revoked = tokens.size;
+      const connectionsRevoked = connections.size;
       tokens.clear();
-      sendJson(response, json(200, { revoked }, TOKEN_HEADERS));
+      connections.clear();
+      sendJson(response, json(200, { revoked, connectionsRevoked }, SECRET_HEADERS));
       return;
     }
     try {
-      const token = `ank_tmp_${randomBytes(32).toString('base64url')}`;
-      const expiresAt = now() + TOKEN_TTL_MS;
-      tokens.clear();
-      tokens.set(hash(token), { expiresAt, calls: 0, idempotency: new Map() });
+      const { token, expiresAt } = issueToken(tokens, now);
       sendJson(response, json(200, {
         token,
         expiresAt: new Date(expiresAt).toISOString(),
         maxUses: MAX_TOKEN_CALLS
-      }, TOKEN_HEADERS));
+      }, SECRET_HEADERS));
     } catch {
-      sendJson(response, { ...errorResponse(new Error('token generation failed')), headers: TOKEN_HEADERS });
+      sendJson(response, { ...errorResponse(new Error('token generation failed')), headers: SECRET_HEADERS });
+    }
+    return;
+  }
+
+  const code = connectionCode(pathname);
+  if (code) {
+    request.resume();
+    const codeHash = hash(code);
+    const connection = connections.get(codeHash);
+    if (!connection || connection.expiresAt <= now()) {
+      if (connection) connections.delete(codeHash);
+      sendJson(response, json(401, { error: { code: 'INVALID_CONNECTION', message: '连接链接无效或已过期' } }, SECRET_HEADERS));
+      return;
+    }
+    if (method === 'GET') {
+      sendJson(response, json(200, {
+        type: 'ankimo-ai-connection',
+        openapi: OPENAPI_URL,
+        exchange: {
+          method: 'POST',
+          url: `${PUBLIC_API_URL}${pathname}`,
+          headers: { 'Content-Type': 'application/json' },
+          body: {}
+        }
+      }, SECRET_HEADERS));
+      return;
+    }
+    if (contentType(request) !== 'application/json') {
+      sendJson(response, { ...errorResponse(new HttpError(415, 'UNSUPPORTED_MEDIA_TYPE', '兑换请求必须使用 application/json')), headers: SECRET_HEADERS });
+      return;
+    }
+    connections.delete(codeHash);
+    try {
+      const { token } = issueToken(tokens, now);
+      sendJson(response, json(200, {
+        access_token: token,
+        token_type: 'Bearer',
+        expires_in: TOKEN_TTL_MS / 1000,
+        max_uses: MAX_TOKEN_CALLS,
+        openapi: OPENAPI_URL
+      }, SECRET_HEADERS));
+    } catch {
+      sendJson(response, { ...errorResponse(new Error('token generation failed')), headers: SECRET_HEADERS });
     }
     return;
   }
@@ -360,9 +452,10 @@ export function createAnkimoApiServer(options: AnkimoApiOptions = {}): Server {
   const client = options.client || new AnkiConnect({ url: process.env.ANKICONNECT_URL || 'http://127.0.0.1:8765' });
   const noteWriter = options.noteWriter || createTextNote;
   const tokens = new Map<string, TokenRecord>();
+  const connections = new Map<string, ConnectionRecord>();
   const now = options.now || Date.now;
   return createServer((request, response) => {
-    void handleRequest(request, response, client, noteWriter, tokens, now).catch(error => sendJson(response, errorResponse(error)));
+    void handleRequest(request, response, client, noteWriter, tokens, connections, now).catch(error => sendJson(response, errorResponse(error)));
   });
 }
 

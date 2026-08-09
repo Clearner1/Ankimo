@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { createAnkimoApiServer, MAX_TOKEN_CALLS, TOKEN_TTL_MS, type AnkimoApiOptions } from './ankimo-api.mts';
+import { CONNECTION_TTL_MS, createAnkimoApiServer, MAX_TOKEN_CALLS, TOKEN_TTL_MS, type AnkimoApiOptions } from './ankimo-api.mts';
 
 type FakeAnki = {
   deckNames: () => Promise<string[]>;
@@ -61,6 +61,85 @@ afterEach(async () => {
 });
 
 describe('Ankimo HTTP API', () => {
+  it('previews and atomically exchanges a one-time AI connection', async () => {
+    const base = await start({ client: fakeAnki(), now: () => 1_000_000 });
+    const created = await request(base, '/api/ai-connections', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+    });
+    expect(created.response.status).toBe(200);
+    expect(created.response.headers.get('cache-control')).toBe('no-store');
+    expect(created.body.expiresIn).toBe(CONNECTION_TTL_MS / 1000);
+    const connectUrl = String(created.body.connectUrl);
+    const connectPath = new URL(connectUrl).pathname;
+
+    const preview = await request(base, connectPath);
+    expect(preview.response.status).toBe(200);
+    expect(preview.response.headers.get('cache-control')).toBe('no-store');
+    expect(preview.response.headers.get('referrer-policy')).toBe('no-referrer');
+    expect(preview.body).toMatchObject({
+      type: 'ankimo-ai-connection',
+      openapi: 'https://ankimo-api.yzr-stack.top/openapi.json',
+      exchange: { method: 'POST', url: connectUrl }
+    });
+    expect(JSON.stringify(preview.body)).not.toContain('ank_tmp_');
+    expect((await request(base, connectPath)).response.status).toBe(200);
+
+    expect((await request(base, connectPath, { method: 'POST' })).response.status).toBe(415);
+    const exchangeRequest = {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+    };
+    const exchanges = await Promise.all([
+      request(base, connectPath, exchangeRequest),
+      request(base, connectPath, exchangeRequest)
+    ]);
+    expect(exchanges.map(result => result.response.status).sort()).toEqual([200, 401]);
+    const exchanged = exchanges.find(result => result.response.status === 200);
+    expect(exchanged?.response.headers.get('cache-control')).toBe('no-store');
+    expect(exchanged?.body).toMatchObject({
+      token_type: 'Bearer', expires_in: TOKEN_TTL_MS / 1000, max_uses: MAX_TOKEN_CALLS,
+      openapi: 'https://ankimo-api.yzr-stack.top/openapi.json'
+    });
+    const accessToken = exchanged?.body.access_token;
+    expect(typeof accessToken).toBe('string');
+    const authorized = await request(base, '/v1/decks', {
+      headers: { Authorization: `Bearer ${String(accessToken)}` }
+    });
+    expect(authorized.response.status).toBe(200);
+  });
+
+  it('replaces old AI connections and rejects expired links', async () => {
+    let currentTime = 1_000_000;
+    const base = await start({ client: fakeAnki(), now: () => currentTime });
+    const createConnection = async () => {
+      const result = await request(base, '/api/ai-connections', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+      });
+      return new URL(String(result.body.connectUrl)).pathname;
+    };
+    const replaced = await createConnection();
+    const expiring = await createConnection();
+    expect((await request(base, replaced, { method: 'POST' })).response.status).toBe(401);
+    currentTime += CONNECTION_TTL_MS + 1;
+    expect((await request(base, expiring)).response.status).toBe(401);
+  });
+
+  it('revokes bearer tokens and pending AI connections together', async () => {
+    const base = await start({ client: fakeAnki() });
+    const connection = await request(base, '/api/ai-connections', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+    });
+    const connectPath = new URL(String(connection.body.connectUrl)).pathname;
+    const bearer = await token(base);
+
+    const revoked = await request(base, '/api/ai-tokens', { method: 'DELETE' });
+    expect(revoked.response.status).toBe(200);
+    expect(revoked.body).toMatchObject({ revoked: 1, connectionsRevoked: 1 });
+    expect((await request(base, '/v1/decks', { headers: { Authorization: `Bearer ${bearer}` } })).response.status).toBe(401);
+    expect((await request(base, connectPath, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+    })).response.status).toBe(401);
+  });
+
   it('limits bearer calls and expires tokens', async () => {
     let currentTime = 1_000_000;
     const base = await start({ client: fakeAnki(), now: () => currentTime });

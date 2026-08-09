@@ -1,23 +1,23 @@
 import { describe, expect, it } from 'vitest';
-import { createAiToken, revokeAiTokens, type AiAccessFetch } from './AiAccess';
+import { createAiConnection, revokeAiTokens, type AiAccessFetch } from './AiAccess';
 
 function fetchResponse(body: unknown, status = 200): AiAccessFetch {
   return async () => new Response(body === undefined ? null : JSON.stringify(body), { status });
 }
 
-describe('AI temporary token API', () => {
-  it('creates a token with same-origin JSON request settings', async () => {
+describe('AI temporary access API', () => {
+  it('creates a connection link with same-origin JSON request settings', async () => {
     let request: { input: RequestInfo | URL; init?: RequestInit } | undefined;
     const fetcher: AiAccessFetch = async (input, init) => {
       request = { input, init };
-      return new Response(JSON.stringify({ token: 'temporary-token', expiresAt: '2026-08-09T12:15:00.000Z', maxUses: 20 }));
+      return new Response(JSON.stringify({ connectUrl: 'https://ankimo-api.yzr-stack.top/connect/temporary-code', expiresAt: '2026-08-09T12:02:00.000Z', expiresIn: 120 }));
     };
 
-    await expect(createAiToken(fetcher)).resolves.toEqual({
-      token: 'temporary-token', expiresAt: '2026-08-09T12:15:00.000Z', maxUses: 20
+    await expect(createAiConnection(fetcher)).resolves.toEqual({
+      connectUrl: 'https://ankimo-api.yzr-stack.top/connect/temporary-code', expiresAt: '2026-08-09T12:02:00.000Z', expiresIn: 120
     });
     expect(request).toMatchObject({
-      input: '/api/ai-tokens',
+      input: '/api/ai-connections',
       init: {
         method: 'POST',
         credentials: 'same-origin',
@@ -43,12 +43,12 @@ describe('AI temporary token API', () => {
   });
 
   it('reports non-success responses and network errors', async () => {
-    await expect(createAiToken(fetchResponse({ message: '未授权' }, 401))).rejects.toThrow('未授权');
-    await expect(createAiToken(fetchResponse({ error: { code: 'FAILED', message: '生成失败' } }, 500))).rejects.toThrow('生成失败');
+    await expect(createAiConnection(fetchResponse({ message: '未授权' }, 401))).rejects.toThrow('未授权');
+    await expect(createAiConnection(fetchResponse({ error: { code: 'FAILED', message: '生成失败' } }, 500))).rejects.toThrow('生成失败');
     await expect(revokeAiTokens(async () => { throw new Error('网络不可用'); })).rejects.toThrow('网络不可用');
   });
 
-  it('rejects malformed token responses', async () => {
-    await expect(createAiToken(fetchResponse({ token: '', expiresAt: '', maxUses: 0 }))).rejects.toThrow('响应格式无效');
+  it('rejects malformed connection responses', async () => {
+    await expect(createAiConnection(fetchResponse({ connectUrl: '', expiresAt: '', expiresIn: 0 }))).rejects.toThrow('响应格式无效');
   });
 });

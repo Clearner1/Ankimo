@@ -1,16 +1,17 @@
 import { useState } from 'react';
 
 const AI_TOKEN_PATH = '/api/ai-tokens';
+const AI_CONNECTION_PATH = '/api/ai-connections';
 export const AI_OPENAPI_URL = 'https://ankimo-api.yzr-stack.top/openapi.json';
 const JSON_HEADERS = {
   Accept: 'application/json',
   'Content-Type': 'application/json'
 } as const;
 
-export type AiToken = {
-  token: string;
+export type AiConnection = {
+  connectUrl: string;
   expiresAt: string;
-  maxUses: number;
+  expiresIn: number;
 };
 
 export type AiAccessFetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
@@ -36,17 +37,17 @@ async function responseError(response: Response): Promise<never> {
   throw new Error(message || `请求失败（HTTP ${response.status}）`);
 }
 
-function parseAiToken(value: unknown): AiToken {
-  if (!isRecord(value) || typeof value.token !== 'string' || !value.token || typeof value.expiresAt !== 'string' || !value.expiresAt || typeof value.maxUses !== 'number' || !Number.isInteger(value.maxUses) || value.maxUses < 1) {
-    throw new Error('临时 Token 响应格式无效');
+function parseAiConnection(value: unknown): AiConnection {
+  if (!isRecord(value) || typeof value.connectUrl !== 'string' || !value.connectUrl || typeof value.expiresAt !== 'string' || !value.expiresAt || typeof value.expiresIn !== 'number' || !Number.isInteger(value.expiresIn) || value.expiresIn < 1) {
+    throw new Error('AI 连接链接响应格式无效');
   }
-  return { token: value.token, expiresAt: value.expiresAt, maxUses: value.maxUses };
+  return { connectUrl: value.connectUrl, expiresAt: value.expiresAt, expiresIn: value.expiresIn };
 }
 
 const defaultFetch: AiAccessFetch = (input, init) => globalThis.fetch(input, init);
 
-export async function createAiToken(fetcher: AiAccessFetch = defaultFetch): Promise<AiToken> {
-  const response = await fetcher(AI_TOKEN_PATH, {
+export async function createAiConnection(fetcher: AiAccessFetch = defaultFetch): Promise<AiConnection> {
+  const response = await fetcher(AI_CONNECTION_PATH, {
     method: 'POST',
     credentials: 'same-origin',
     headers: JSON_HEADERS,
@@ -57,9 +58,9 @@ export async function createAiToken(fetcher: AiAccessFetch = defaultFetch): Prom
   try {
     payload = await response.json();
   } catch {
-    throw new Error('临时 Token 响应格式无效');
+    throw new Error('AI 连接链接响应格式无效');
   }
-  return parseAiToken(payload);
+  return parseAiConnection(payload);
 }
 
 export async function revokeAiTokens(fetcher: AiAccessFetch = defaultFetch): Promise<void> {
@@ -76,17 +77,16 @@ function causeMessage(cause: unknown): string {
 }
 
 export function AiAccess() {
-  const [token, setToken] = useState<AiToken | null>(null);
+  const [connection, setConnection] = useState<AiConnection | null>(null);
   const [busy, setBusy] = useState<'create' | 'copy' | 'revoke' | null>(null);
   const [feedback, setFeedback] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
-  const authorization = token ? `Bearer ${token.token}` : '';
 
   const generate = async () => {
     setBusy('create');
     setFeedback(null);
     try {
-      setToken(await createAiToken());
-      setFeedback({ message: '临时 Token 已生成，请立即复制到 AI 工具中。', type: 'success' });
+      setConnection(await createAiConnection());
+      setFeedback({ message: '一次性连接链接已生成，请在 2 分钟内发送给 AI。', type: 'success' });
     } catch (cause) {
       setFeedback({ message: `生成失败：${causeMessage(cause)}`, type: 'error' });
     } finally {
@@ -94,13 +94,13 @@ export function AiAccess() {
     }
   };
 
-  const copyAuthorization = async () => {
-    if (!authorization) return;
+  const copyConnection = async () => {
+    if (!connection) return;
     setBusy('copy');
     try {
       if (!navigator.clipboard) throw new Error('当前环境不支持剪贴板');
-      await navigator.clipboard.writeText(authorization);
-      setFeedback({ message: 'Authorization 已复制。', type: 'success' });
+      await navigator.clipboard.writeText(connection.connectUrl);
+      setFeedback({ message: 'AI 连接链接已复制。', type: 'success' });
     } catch (cause) {
       setFeedback({ message: `复制失败：${causeMessage(cause)}`, type: 'error' });
     } finally {
@@ -113,8 +113,8 @@ export function AiAccess() {
     setFeedback(null);
     try {
       await revokeAiTokens();
-      setToken(null);
-      setFeedback({ message: '全部临时 Token 已撤销。', type: 'success' });
+      setConnection(null);
+      setFeedback({ message: '全部 AI 临时访问已撤销。', type: 'success' });
     } catch (cause) {
       setFeedback({ message: `撤销失败：${causeMessage(cause)}`, type: 'error' });
     } finally {
@@ -127,7 +127,7 @@ export function AiAccess() {
       <div className="composer-head">
         <h2 id="aiAccessTitle">AI 临时访问</h2>
       </div>
-      <p className="composer-hint">生成临时 Token 后，把 OpenAPI 地址和 Authorization 提供给支持 HTTP 工具的 AI。</p>
+      <p className="composer-hint">生成一次性连接链接后，只需把链接提供给支持 HTTP 工具的 AI。</p>
       <div className="composer-fields">
         <label className="control-field" htmlFor="aiOpenApiUrl">
           OpenAPI URL
@@ -138,29 +138,29 @@ export function AiAccess() {
       </div>
       <div className="filter-info" role="note">
         <span className="filter-dot" aria-hidden="true" />
-        <span>有效期 15 分钟，最多 20 次调用</span>
+        <span>连接链接 2 分钟内可兑换一次；兑换后的访问有效 15 分钟，最多 20 次调用</span>
       </div>
 
-      {token && (
+      {connection && (
         <div className="composer-fields">
-          <label className="control-field" htmlFor="aiAuthorization">
-            Authorization
+          <label className="control-field" htmlFor="aiConnectionUrl">
+            AI 连接链接
             <span className="tag-input-wrap">
-              <input id="aiAuthorization" type="text" readOnly value={authorization} />
+              <input id="aiConnectionUrl" type="url" readOnly value={connection.connectUrl} />
             </span>
           </label>
-          <p className="composer-hint">只在当前页面显示，不写入 URL、浏览器存储或日志。</p>
-          <p className="composer-hint">本次有效期至：{token.expiresAt}；最多 {token.maxUses} 次调用。</p>
+          <p className="composer-hint">只在当前页面显示，不写入浏览器存储或日志；生成新链接会使旧链接失效。</p>
+          <p className="composer-hint">请在 {connection.expiresAt} 前让 AI 访问并兑换。</p>
         </div>
       )}
 
       <div className="composer-footer">
         <div className="tag-input-wrap" aria-hidden="true" />
         <div className="composer-actions">
-          {token && <button className="clear-filter" type="button" disabled={busy !== null} onClick={() => { void copyAuthorization(); }}>复制 Authorization</button>}
-          {token && <button className="clear-filter" type="button" disabled={busy !== null} onClick={() => { void revoke(); }}>撤销全部 Token</button>}
+          {connection && <button className="clear-filter" type="button" disabled={busy !== null} onClick={() => { void copyConnection(); }}>复制连接链接</button>}
+          <button className="clear-filter" type="button" disabled={busy !== null} onClick={() => { void revoke(); }}>撤销全部访问</button>
           <button className="save-btn" type="button" disabled={busy !== null} onClick={() => { void generate(); }}>
-            {busy === 'create' ? '生成中...' : '生成临时 Token'}
+            {busy === 'create' ? '生成中...' : '生成 AI 连接链接'}
           </button>
         </div>
       </div>
