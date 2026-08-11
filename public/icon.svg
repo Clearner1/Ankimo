@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title">
+  <title id="title">Ankimo</title>
+  <rect width="1024" height="1024" fill="#fffdfa"/>
+  <g transform="rotate(-8 455 482)">
+    <rect x="170" y="180" width="570" height="590" rx="48" fill="#1b573b"/>
+  </g>
+  <rect x="224" y="250" width="576" height="590" rx="48" fill="#fffdfa" stroke="#246b4a" stroke-width="56"/>
+  <rect x="744" y="354" width="120" height="160" rx="28" fill="#246b4a"/>
+  <rect x="342" y="444" width="290" height="44" rx="22" fill="#246b4a"/>
+  <rect x="342" y="566" width="290" height="44" rx="22" fill="#246b4a"/>
+</svg>
