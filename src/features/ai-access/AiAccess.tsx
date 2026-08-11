@@ -14,6 +14,12 @@ export type AiConnection = {
   expiresIn: number;
 };
 
+export type TrustedAiToken = {
+  token: string;
+  maxCallsPerMinute: number;
+  maxCallsPerDay: number;
+};
+
 export type AiAccessFetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -44,6 +50,13 @@ function parseAiConnection(value: unknown): AiConnection {
   return { connectUrl: value.connectUrl, expiresAt: value.expiresAt, expiresIn: value.expiresIn };
 }
 
+function parseTrustedAiToken(value: unknown): TrustedAiToken {
+  if (!isRecord(value) || typeof value.token !== 'string' || !/^ank_live_[A-Za-z0-9_-]{43}$/.test(value.token) || typeof value.maxCallsPerMinute !== 'number' || !Number.isInteger(value.maxCallsPerMinute) || value.maxCallsPerMinute < 1 || typeof value.maxCallsPerDay !== 'number' || !Number.isInteger(value.maxCallsPerDay) || value.maxCallsPerDay < 1) {
+    throw new Error('可信 AI 密钥响应格式无效');
+  }
+  return { token: value.token, maxCallsPerMinute: value.maxCallsPerMinute, maxCallsPerDay: value.maxCallsPerDay };
+}
+
 const defaultFetch: AiAccessFetch = (input, init) => globalThis.fetch(input, init);
 
 export async function createAiConnection(fetcher: AiAccessFetch = defaultFetch): Promise<AiConnection> {
@@ -63,6 +76,23 @@ export async function createAiConnection(fetcher: AiAccessFetch = defaultFetch):
   return parseAiConnection(payload);
 }
 
+export async function createTrustedAiToken(fetcher: AiAccessFetch = defaultFetch): Promise<TrustedAiToken> {
+  const response = await fetcher(AI_TOKEN_PATH, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: JSON_HEADERS,
+    body: JSON.stringify({})
+  });
+  if (!response.ok) await responseError(response);
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch {
+    throw new Error('可信 AI 密钥响应格式无效');
+  }
+  return parseTrustedAiToken(payload);
+}
+
 export async function revokeAiTokens(fetcher: AiAccessFetch = defaultFetch): Promise<void> {
   const response = await fetcher(AI_TOKEN_PATH, {
     method: 'DELETE',
@@ -78,15 +108,16 @@ function causeMessage(cause: unknown): string {
 
 export function AiAccess() {
   const [connection, setConnection] = useState<AiConnection | null>(null);
-  const [busy, setBusy] = useState<'create' | 'copy' | 'revoke' | null>(null);
+  const [trustedToken, setTrustedToken] = useState<TrustedAiToken | null>(null);
+  const [busy, setBusy] = useState<'connection' | 'trusted' | 'copy' | 'revoke' | null>(null);
   const [feedback, setFeedback] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   const generate = async () => {
-    setBusy('create');
+    setBusy('connection');
     setFeedback(null);
     try {
       setConnection(await createAiConnection());
-      setFeedback({ message: '一次性连接链接已生成，请在 2 分钟内发送给 AI。', type: 'success' });
+      setFeedback({ message: '一次性连接链接已生成，请在 10 分钟内发送给 AI。', type: 'success' });
     } catch (cause) {
       setFeedback({ message: `生成失败：${causeMessage(cause)}`, type: 'error' });
     } finally {
@@ -94,13 +125,25 @@ export function AiAccess() {
     }
   };
 
-  const copyConnection = async () => {
-    if (!connection) return;
+  const generateTrusted = async () => {
+    setBusy('trusted');
+    setFeedback(null);
+    try {
+      setTrustedToken(await createTrustedAiToken());
+      setFeedback({ message: '长期密钥已生成；旧长期密钥已失效。请立即保存到安全密钥存储。', type: 'success' });
+    } catch (cause) {
+      setFeedback({ message: `生成失败：${causeMessage(cause)}`, type: 'error' });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const copyValue = async (value: string, label: string) => {
     setBusy('copy');
     try {
       if (!navigator.clipboard) throw new Error('当前环境不支持剪贴板');
-      await navigator.clipboard.writeText(connection.connectUrl);
-      setFeedback({ message: 'AI 连接链接已复制。', type: 'success' });
+      await navigator.clipboard.writeText(value);
+      setFeedback({ message: `${label}已复制。`, type: 'success' });
     } catch (cause) {
       setFeedback({ message: `复制失败：${causeMessage(cause)}`, type: 'error' });
     } finally {
@@ -114,7 +157,8 @@ export function AiAccess() {
     try {
       await revokeAiTokens();
       setConnection(null);
-      setFeedback({ message: '全部 AI 临时访问已撤销。', type: 'success' });
+      setTrustedToken(null);
+      setFeedback({ message: '全部 AI 访问已撤销。', type: 'success' });
     } catch (cause) {
       setFeedback({ message: `撤销失败：${causeMessage(cause)}`, type: 'error' });
     } finally {
@@ -125,9 +169,9 @@ export function AiAccess() {
   return (
     <section className="input-card" aria-labelledby="aiAccessTitle">
       <div className="composer-head">
-        <h2 id="aiAccessTitle">AI 临时访问</h2>
+        <h2 id="aiAccessTitle">AI 访问</h2>
       </div>
-      <p className="composer-hint">生成一次性连接链接后，只需把链接提供给支持 HTTP 工具的 AI。</p>
+      <p className="composer-hint">日常使用请选择长期密钥；不能安全保存密钥的 AI 仍使用一次性连接链接。</p>
       <div className="composer-fields">
         <label className="control-field" htmlFor="aiOpenApiUrl">
           OpenAPI URL
@@ -138,8 +182,28 @@ export function AiAccess() {
       </div>
       <div className="filter-info" role="note">
         <span className="filter-dot" aria-hidden="true" />
-        <span>连接链接 2 分钟内可兑换一次；兑换后的访问有效 15 分钟，最多 20 次调用</span>
+        <span>临时链接 10 分钟内可兑换一次，访问有效 1 小时、最多 100 次；长期密钥有效到主动撤销，每分钟 20 次、每天 200 次</span>
       </div>
+
+      {trustedToken && (
+        <div className="composer-fields">
+          <label className="control-field" htmlFor="aiTrustedToken">
+            可信 AI 长期密钥
+            <span className="tag-input-wrap">
+              <input id="aiTrustedToken" type="password" readOnly autoComplete="off" spellCheck={false} value={trustedToken.token} />
+            </span>
+          </label>
+          <p className="composer-hint">只在当前页面显示一次。请保存到 AI 平台的 Secret Store 或本机 Keychain，切勿发送到聊天。</p>
+          <p className="composer-hint">本机 Codex：复制后在终端运行 codex-secret save ankimo，并按隐藏提示保存。</p>
+          <div className="composer-footer">
+            <div className="tag-input-wrap" aria-hidden="true" />
+            <div className="composer-actions">
+              <button className="clear-filter" type="button" disabled={busy !== null} onClick={() => { void generateTrusted(); }}>重置长期密钥</button>
+              <button className="save-btn" type="button" disabled={busy !== null} onClick={() => { void copyValue(trustedToken.token, '长期密钥'); }}>复制长期密钥</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {connection && (
         <div className="composer-fields">
@@ -149,19 +213,27 @@ export function AiAccess() {
               <input id="aiConnectionUrl" type="url" readOnly value={connection.connectUrl} />
             </span>
           </label>
-          <p className="composer-hint">只在当前页面显示，不写入浏览器存储或日志；生成新链接会使旧链接失效。</p>
+          <p className="composer-hint">只在当前页面显示，不写入浏览器存储或日志；只能兑换一次。</p>
           <p className="composer-hint">请在 {connection.expiresAt} 前让 AI 访问并兑换。</p>
+          <div className="composer-footer">
+            <div className="tag-input-wrap" aria-hidden="true" />
+            <div className="composer-actions">
+              <button className="save-btn" type="button" disabled={busy !== null} onClick={() => { void copyValue(connection.connectUrl, 'AI 连接链接'); }}>复制连接链接</button>
+            </div>
+          </div>
         </div>
       )}
 
       <div className="composer-footer">
         <div className="tag-input-wrap" aria-hidden="true" />
         <div className="composer-actions">
-          {connection && <button className="clear-filter" type="button" disabled={busy !== null} onClick={() => { void copyConnection(); }}>复制连接链接</button>}
           <button className="clear-filter" type="button" disabled={busy !== null} onClick={() => { void revoke(); }}>撤销全部访问</button>
-          <button className="save-btn" type="button" disabled={busy !== null} onClick={() => { void generate(); }}>
-            {busy === 'create' ? '生成中...' : '生成 AI 连接链接'}
+          <button className="clear-filter" type="button" disabled={busy !== null} onClick={() => { void generate(); }}>
+            {busy === 'connection' ? '生成中...' : '生成临时连接'}
           </button>
+          {!trustedToken && <button className="save-btn" type="button" disabled={busy !== null} onClick={() => { void generateTrusted(); }}>
+            {busy === 'trusted' ? '生成中...' : '生成长期密钥'}
+          </button>}
         </div>
       </div>
 

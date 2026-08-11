@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { createAiConnection, revokeAiTokens, type AiAccessFetch } from './AiAccess';
+import { createAiConnection, createTrustedAiToken, revokeAiTokens, type AiAccessFetch } from './AiAccess';
 
 function fetchResponse(body: unknown, status = 200): AiAccessFetch {
   return async () => new Response(body === undefined ? null : JSON.stringify(body), { status });
 }
 
-describe('AI temporary access API', () => {
+describe('AI access API', () => {
   it('creates a connection link with same-origin JSON request settings', async () => {
     let request: { input: RequestInfo | URL; init?: RequestInit } | undefined;
     const fetcher: AiAccessFetch = async (input, init) => {
@@ -18,6 +18,33 @@ describe('AI temporary access API', () => {
     });
     expect(request).toMatchObject({
       input: '/api/ai-connections',
+      init: {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+        body: '{}'
+      }
+    });
+  });
+
+  it('creates a trusted token with same-origin JSON request settings', async () => {
+    let request: { input: RequestInfo | URL; init?: RequestInit } | undefined;
+    const fetcher: AiAccessFetch = async (input, init) => {
+      request = { input, init };
+      return new Response(JSON.stringify({
+        token: `ank_live_${'a'.repeat(43)}`,
+        maxCallsPerMinute: 20,
+        maxCallsPerDay: 200
+      }));
+    };
+
+    await expect(createTrustedAiToken(fetcher)).resolves.toEqual({
+      token: `ank_live_${'a'.repeat(43)}`,
+      maxCallsPerMinute: 20,
+      maxCallsPerDay: 200
+    });
+    expect(request).toMatchObject({
+      input: '/api/ai-tokens',
       init: {
         method: 'POST',
         credentials: 'same-origin',
@@ -50,5 +77,6 @@ describe('AI temporary access API', () => {
 
   it('rejects malformed connection responses', async () => {
     await expect(createAiConnection(fetchResponse({ connectUrl: '', expiresAt: '', expiresIn: 0 }))).rejects.toThrow('响应格式无效');
+    await expect(createTrustedAiToken(fetchResponse({ token: 'short', maxCallsPerMinute: 0, maxCallsPerDay: 0 }))).rejects.toThrow('响应格式无效');
   });
 });

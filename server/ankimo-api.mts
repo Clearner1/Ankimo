@@ -1,14 +1,20 @@
 import { createHash, randomBytes } from 'node:crypto';
+import { chmodSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
+import { homedir } from 'node:os';
+import { dirname, join } from 'node:path';
 import { AnkiConnect } from '../src/api/ankiConnect.ts';
 import { createTextNote, MEMO_MODEL, QA_MODEL } from '../src/domain/noteWriting.ts';
 
 export const API_HOST = '127.0.0.1';
 export const API_PORT = 8787;
-export const TOKEN_TTL_MS = 15 * 60 * 1000;
-export const CONNECTION_TTL_MS = 2 * 60 * 1000;
-export const MAX_TOKEN_CALLS = 20;
+export const TOKEN_TTL_MS = 60 * 60 * 1000;
+export const CONNECTION_TTL_MS = 10 * 60 * 1000;
+export const MAX_TOKEN_CALLS = 100;
+export const MAX_TRUSTED_CALLS_PER_MINUTE = 20;
+export const MAX_TRUSTED_CALLS_PER_DAY = 200;
 export const MAX_JSON_BODY_BYTES = 256 * 1024;
+const MAX_IDEMPOTENCY_RECORDS = 1_000;
 const DEFAULT_DECK = 'mubu';
 const PUBLIC_API_URL = 'https://ankimo-api.yzr-stack.top';
 const OPENAPI_URL = `${PUBLIC_API_URL}/openapi.json`;
@@ -22,16 +28,25 @@ type JsonObject = Record<string, unknown>;
 type JsonResponse = { status: number; body: JsonObject; headers?: Record<string, string> };
 type IdempotencyRecord = { fingerprint: string; result: Promise<JsonResponse> };
 type ConnectionRecord = { expiresAt: number };
-type TokenRecord = {
+type AuthRecord = { idempotency: Map<string, IdempotencyRecord> };
+type TokenRecord = AuthRecord & {
   expiresAt: number;
   calls: number;
-  idempotency: Map<string, IdempotencyRecord>;
 };
+type TrustedTokenRecord = AuthRecord & {
+  tokenHash: string;
+  minuteWindow: number;
+  minuteCalls: number;
+  dayWindow: number;
+  dayCalls: number;
+};
+type TrustedAccess = { record: TrustedTokenRecord | null; path?: string };
 
 export type AnkimoApiOptions = {
   client?: ApiClient;
   noteWriter?: NoteWriter;
   now?: () => number;
+  trustedTokenPath?: string;
 };
 
 class HttpError extends Error {
@@ -47,11 +62,11 @@ class HttpError extends Error {
 
 const OPENAPI_DOCUMENT = {
   openapi: '3.1.0',
-  info: { title: 'Ankimo AI API', version: '1.0.0' },
+  info: { title: 'Ankimo AI API', version: '1.1.0' },
   servers: [{ url: PUBLIC_API_URL }],
   components: {
     securitySchemes: {
-      bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'temporary token' }
+      bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'temporary or trusted token' }
     },
     schemas: {
       Tags: { type: 'array', maxItems: 50, items: { type: 'string', maxLength: 100 } },
@@ -142,6 +157,59 @@ function hash(value: string): string {
   return createHash('sha256').update(value).digest('hex');
 }
 
+function trustedRecord(tokenHash: string, currentTime: number): TrustedTokenRecord {
+  return {
+    tokenHash,
+    minuteWindow: Math.floor(currentTime / 60_000),
+    minuteCalls: 0,
+    dayWindow: Math.floor(currentTime / 86_400_000),
+    dayCalls: 0,
+    idempotency: new Map()
+  };
+}
+
+function loadTrustedToken(path: string | undefined, currentTime: number): TrustedTokenRecord | null {
+  if (!path) return null;
+  try {
+    const value: unknown = JSON.parse(readFileSync(path, 'utf8'));
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      const stored = value as Record<string, unknown>;
+      if (stored.version === 1 && typeof stored.tokenHash === 'string' && /^[a-f0-9]{64}$/.test(stored.tokenHash)) {
+        return trustedRecord(stored.tokenHash, currentTime);
+      }
+    }
+  } catch {
+    // A missing or damaged state file safely means no trusted access.
+  }
+  return null;
+}
+
+function saveTrustedToken(path: string | undefined, tokenHash: string): void {
+  if (!path) return;
+  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+  const temporaryPath = `${path}.tmp`;
+  writeFileSync(temporaryPath, `${JSON.stringify({ version: 1, tokenHash })}\n`, { mode: 0o600 });
+  renameSync(temporaryPath, path);
+  chmodSync(path, 0o600);
+}
+
+function removeTrustedToken(path: string | undefined): void {
+  if (!path) return;
+  try {
+    unlinkSync(path);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
+}
+
+function issueTrustedToken(access: TrustedAccess, now: () => number): string {
+  const token = `ank_live_${randomBytes(32).toString('base64url')}`;
+  const record = trustedRecord(hash(token), now());
+  saveTrustedToken(access.path, record.tokenHash);
+  access.record = record;
+  return token;
+}
+
 function issueToken(tokens: Map<string, TokenRecord>, now: () => number) {
   const token = `ank_tmp_${randomBytes(32).toString('base64url')}`;
   const expiresAt = now() + TOKEN_TTL_MS;
@@ -226,7 +294,7 @@ function optionalDeck(body: JsonObject): string {
   return body.deck;
 }
 
-function bearerToken(request: IncomingMessage, tokens: Map<string, TokenRecord>, now: () => number): TokenRecord {
+function bearerToken(request: IncomingMessage, tokens: Map<string, TokenRecord>, trusted: TrustedAccess, now: () => number): AuthRecord {
   const header = request.headers.authorization;
   if (typeof header !== 'string' || !/^Bearer \S+$/.test(header)) {
     throw new HttpError(401, 'UNAUTHORIZED', '需要有效的 Bearer Token');
@@ -235,20 +303,47 @@ function bearerToken(request: IncomingMessage, tokens: Map<string, TokenRecord>,
   const tokenHash = hash(token);
   const record = tokens.get(tokenHash);
   const currentTime = now();
-  if (!record || record.expiresAt <= currentTime || record.calls >= MAX_TOKEN_CALLS) {
-    if (record && record.expiresAt <= currentTime) tokens.delete(tokenHash);
+  if (record) {
+    if (record.expiresAt <= currentTime || record.calls >= MAX_TOKEN_CALLS) {
+      if (record.expiresAt <= currentTime) tokens.delete(tokenHash);
+      throw new HttpError(401, 'UNAUTHORIZED', 'Bearer Token 无效、已过期或已达到调用上限');
+    }
+    record.calls += 1;
+    return record;
+  }
+
+  const trustedRecord = trusted.record;
+  if (!trustedRecord || trustedRecord.tokenHash !== tokenHash) {
     throw new HttpError(401, 'UNAUTHORIZED', 'Bearer Token 无效、已过期或已达到调用上限');
   }
-  record.calls += 1;
-  return record;
+  const minuteWindow = Math.floor(currentTime / 60_000);
+  const dayWindow = Math.floor(currentTime / 86_400_000);
+  if (trustedRecord.minuteWindow !== minuteWindow) {
+    trustedRecord.minuteWindow = minuteWindow;
+    trustedRecord.minuteCalls = 0;
+  }
+  if (trustedRecord.dayWindow !== dayWindow) {
+    trustedRecord.dayWindow = dayWindow;
+    trustedRecord.dayCalls = 0;
+  }
+  if (trustedRecord.minuteCalls >= MAX_TRUSTED_CALLS_PER_MINUTE || trustedRecord.dayCalls >= MAX_TRUSTED_CALLS_PER_DAY) {
+    throw new HttpError(429, 'RATE_LIMITED', '可信 AI 密钥已达到调用频率上限');
+  }
+  trustedRecord.minuteCalls += 1;
+  trustedRecord.dayCalls += 1;
+  return trustedRecord;
 }
 
-function withIdempotency(record: TokenRecord, key: string, fingerprint: string, action: () => Promise<JsonResponse>): Promise<JsonResponse> {
+function withIdempotency(record: AuthRecord, key: string, fingerprint: string, action: () => Promise<JsonResponse>): Promise<JsonResponse> {
   const mapKey = hash(key);
   const existing = record.idempotency.get(mapKey);
   if (existing) {
     if (existing.fingerprint !== fingerprint) throw new HttpError(409, 'IDEMPOTENCY_CONFLICT', '相同 idempotencyKey 已用于不同请求');
     return existing.result;
+  }
+  if (record.idempotency.size >= MAX_IDEMPOTENCY_RECORDS) {
+    const oldest = record.idempotency.keys().next().value;
+    if (oldest) record.idempotency.delete(oldest);
   }
   const result = Promise.resolve().then(action).catch(errorResponse);
   record.idempotency.set(mapKey, { fingerprint, result });
@@ -281,6 +376,7 @@ async function handleRequest(
   noteWriter: NoteWriter,
   tokens: Map<string, TokenRecord>,
   connections: Map<string, ConnectionRecord>,
+  trusted: TrustedAccess,
   now: () => number
 ): Promise<void> {
   const pathname = new URL(request.url || '/', 'http://127.0.0.1').pathname;
@@ -340,24 +436,38 @@ async function handleRequest(
     return;
   }
   if (pathname === '/api/ai-tokens') {
-    request.resume();
     if (method === 'DELETE') {
+      request.resume();
       const revoked = tokens.size;
       const connectionsRevoked = connections.size;
+      const trustedRevoked = trusted.record ? 1 : 0;
       tokens.clear();
       connections.clear();
-      sendJson(response, json(200, { revoked, connectionsRevoked }, SECRET_HEADERS));
+      try {
+        removeTrustedToken(trusted.path);
+        trusted.record = null;
+        sendJson(response, json(200, { revoked, connectionsRevoked, trustedRevoked }, SECRET_HEADERS));
+      } catch {
+        sendJson(response, { ...errorResponse(new Error('token revocation failed')), headers: SECRET_HEADERS });
+      }
+      return;
+    }
+    if (contentType(request) !== 'application/json') {
+      request.resume();
+      sendJson(response, { ...errorResponse(new HttpError(415, 'UNSUPPORTED_MEDIA_TYPE', '请求体必须使用 application/json')), headers: SECRET_HEADERS });
       return;
     }
     try {
-      const { token, expiresAt } = issueToken(tokens, now);
+      const body = objectBody(await readJson(request));
+      onlyFields(body, []);
+      const token = issueTrustedToken(trusted, now);
       sendJson(response, json(200, {
         token,
-        expiresAt: new Date(expiresAt).toISOString(),
-        maxUses: MAX_TOKEN_CALLS
+        maxCallsPerMinute: MAX_TRUSTED_CALLS_PER_MINUTE,
+        maxCallsPerDay: MAX_TRUSTED_CALLS_PER_DAY
       }, SECRET_HEADERS));
-    } catch {
-      sendJson(response, { ...errorResponse(new Error('token generation failed')), headers: SECRET_HEADERS });
+    } catch (error) {
+      sendJson(response, { ...errorResponse(error), headers: SECRET_HEADERS });
     }
     return;
   }
@@ -405,7 +515,7 @@ async function handleRequest(
     return;
   }
 
-  const tokenRecord = bearerToken(request, tokens, now);
+  const tokenRecord = bearerToken(request, tokens, trusted, now);
   if (pathname === '/v1/decks') {
     try {
       sendJson(response, json(200, { decks: await client.deckNames() }));
@@ -454,13 +564,17 @@ export function createAnkimoApiServer(options: AnkimoApiOptions = {}): Server {
   const tokens = new Map<string, TokenRecord>();
   const connections = new Map<string, ConnectionRecord>();
   const now = options.now || Date.now;
+  const trusted: TrustedAccess = {
+    record: loadTrustedToken(options.trustedTokenPath, now()),
+    path: options.trustedTokenPath
+  };
   return createServer((request, response) => {
-    void handleRequest(request, response, client, noteWriter, tokens, connections, now).catch(error => sendJson(response, errorResponse(error)));
+    void handleRequest(request, response, client, noteWriter, tokens, connections, trusted, now).catch(error => sendJson(response, errorResponse(error)));
   });
 }
 
 export const openApiDocument = OPENAPI_DOCUMENT;
 
 if (process.argv.includes('--serve')) {
-  createAnkimoApiServer().listen(API_PORT, API_HOST);
+  createAnkimoApiServer({ trustedTokenPath: join(homedir(), 'Library', 'Application Support', 'Ankimo', 'trusted-ai-key.json') }).listen(API_PORT, API_HOST);
 }

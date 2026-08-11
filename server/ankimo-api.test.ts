@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { CONNECTION_TTL_MS, createAnkimoApiServer, MAX_TOKEN_CALLS, TOKEN_TTL_MS, type AnkimoApiOptions } from './ankimo-api.mts';
+import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { CONNECTION_TTL_MS, createAnkimoApiServer, MAX_TOKEN_CALLS, MAX_TRUSTED_CALLS_PER_DAY, MAX_TRUSTED_CALLS_PER_MINUTE, TOKEN_TTL_MS, type AnkimoApiOptions } from './ankimo-api.mts';
 
 type FakeAnki = {
   deckNames: () => Promise<string[]>;
@@ -11,6 +14,7 @@ type FakeAnki = {
 };
 
 const servers: ReturnType<typeof createAnkimoApiServer>[] = [];
+const tempDirs: string[] = [];
 
 function fakeAnki(overrides: Partial<FakeAnki> = {}): FakeAnki {
   return {
@@ -41,12 +45,26 @@ async function request(base: string, path: string, init: RequestInit = {}) {
   return { response, body: await response.json() as Record<string, unknown> };
 }
 
-async function token(base: string): Promise<string> {
-  const { response, body } = await request(base, '/api/ai-tokens', { method: 'POST' });
+async function trustedToken(base: string): Promise<string> {
+  const { response, body } = await request(base, '/api/ai-tokens', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+  });
   expect(response.status).toBe(200);
-  expect(body.maxUses).toBe(MAX_TOKEN_CALLS);
+  expect(body.maxCallsPerMinute).toBe(MAX_TRUSTED_CALLS_PER_MINUTE);
+  expect(body.maxCallsPerDay).toBe(MAX_TRUSTED_CALLS_PER_DAY);
   if (typeof body.token !== 'string') throw new Error('token response missing token');
   return body.token;
+}
+
+async function temporaryToken(base: string): Promise<string> {
+  const connection = await request(base, '/api/ai-connections', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+  });
+  const exchanged = await request(base, new URL(String(connection.body.connectUrl)).pathname, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+  });
+  if (typeof exchanged.body.access_token !== 'string') throw new Error('temporary token response missing token');
+  return exchanged.body.access_token;
 }
 
 function auth(tokenValue: string, body?: unknown): RequestInit {
@@ -58,6 +76,7 @@ function auth(tokenValue: string, body?: unknown): RequestInit {
 
 afterEach(async () => {
   await Promise.all(servers.splice(0).map(server => new Promise<void>(resolve => server.close(() => resolve()))));
+  for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
 describe('Ankimo HTTP API', () => {
@@ -129,11 +148,11 @@ describe('Ankimo HTTP API', () => {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
     });
     const connectPath = new URL(String(connection.body.connectUrl)).pathname;
-    const bearer = await token(base);
+    const bearer = await trustedToken(base);
 
     const revoked = await request(base, '/api/ai-tokens', { method: 'DELETE' });
     expect(revoked.response.status).toBe(200);
-    expect(revoked.body).toMatchObject({ revoked: 1, connectionsRevoked: 1 });
+    expect(revoked.body).toMatchObject({ revoked: 0, connectionsRevoked: 1, trustedRevoked: 1 });
     expect((await request(base, '/v1/decks', { headers: { Authorization: `Bearer ${bearer}` } })).response.status).toBe(401);
     expect((await request(base, connectPath, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
@@ -143,8 +162,8 @@ describe('Ankimo HTTP API', () => {
   it('limits bearer calls and expires tokens', async () => {
     let currentTime = 1_000_000;
     const base = await start({ client: fakeAnki(), now: () => currentTime });
-    const replaced = await token(base);
-    const bearer = await token(base);
+    const replaced = await temporaryToken(base);
+    const bearer = await temporaryToken(base);
     expect((await request(base, '/v1/decks', { headers: { Authorization: `Bearer ${replaced}` } })).response.status).toBe(401);
 
     for (let call = 0; call < MAX_TOKEN_CALLS; call++) {
@@ -153,9 +172,47 @@ describe('Ankimo HTTP API', () => {
     }
     expect((await request(base, '/v1/decks', { headers: { Authorization: `Bearer ${bearer}` } })).response.status).toBe(401);
 
-    const expiring = await token(base);
+    const expiring = await temporaryToken(base);
     currentTime += TOKEN_TTL_MS + 1;
     expect((await request(base, '/v1/decks', { headers: { Authorization: `Bearer ${expiring}` } })).response.status).toBe(401);
+  });
+
+  it('persists only a trusted token hash and revokes it across restarts', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ankimo-api-test-'));
+    tempDirs.push(dir);
+    const trustedTokenPath = join(dir, 'trusted.json');
+    const first = await start({ client: fakeAnki(), trustedTokenPath });
+    const original = await trustedToken(first);
+    expect(readFileSync(trustedTokenPath, 'utf8')).not.toContain(original);
+    expect(statSync(trustedTokenPath).mode & 0o777).toBe(0o600);
+
+    const restarted = await start({ client: fakeAnki(), trustedTokenPath });
+    expect((await request(restarted, '/v1/decks', { headers: { Authorization: `Bearer ${original}` } })).response.status).toBe(200);
+    const replacement = await trustedToken(restarted);
+    expect((await request(restarted, '/v1/decks', { headers: { Authorization: `Bearer ${original}` } })).response.status).toBe(401);
+    expect((await request(restarted, '/v1/decks', { headers: { Authorization: `Bearer ${replacement}` } })).response.status).toBe(200);
+
+    expect((await request(restarted, '/api/ai-tokens', { method: 'DELETE' })).response.status).toBe(200);
+    const afterRevocation = await start({ client: fakeAnki(), trustedTokenPath });
+    expect((await request(afterRevocation, '/v1/decks', { headers: { Authorization: `Bearer ${replacement}` } })).response.status).toBe(401);
+  });
+
+  it('rate limits trusted tokens per minute and per day', async () => {
+    let currentTime = 1_000_000;
+    const base = await start({ client: fakeAnki(), now: () => currentTime });
+    const bearer = await trustedToken(base);
+    const call = () => request(base, '/v1/decks', { headers: { Authorization: `Bearer ${bearer}` } });
+
+    for (let count = 0; count < MAX_TRUSTED_CALLS_PER_MINUTE; count++) expect((await call()).response.status).toBe(200);
+    expect((await call()).response.status).toBe(429);
+    for (let batch = 1; batch < MAX_TRUSTED_CALLS_PER_DAY / MAX_TRUSTED_CALLS_PER_MINUTE; batch++) {
+      currentTime += 60_000;
+      for (let count = 0; count < MAX_TRUSTED_CALLS_PER_MINUTE; count++) expect((await call()).response.status).toBe(200);
+    }
+    currentTime += 60_000;
+    expect((await call()).response.status).toBe(429);
+    currentTime += 86_400_000;
+    expect((await call()).response.status).toBe(200);
   });
 
   it('creates memo and QA cards with the mubu default and uses shared memo suspension', async () => {
@@ -167,7 +224,7 @@ describe('Ankimo HTTP API', () => {
       suspend: async cards => { calls.suspended.push(cards); return null; }
     });
     const base = await start({ client });
-    const bearer = await token(base);
+    const bearer = await trustedToken(base);
 
     const memo = await request(base, '/v1/memos', auth(bearer, { content: '原始  笔记', idempotencyKey: 'memo-key-1', tags: ['ai'] }));
     expect(memo.response.status).toBe(200);
@@ -187,7 +244,7 @@ describe('Ankimo HTTP API', () => {
   it('keeps the first idempotent result and rejects a different payload', async () => {
     let writes = 0;
     const base = await start({ client: fakeAnki({ addNote: async () => { writes++; throw new Error('write status unknown'); } }) });
-    const bearer = await token(base);
+    const bearer = await trustedToken(base);
     const body = { content: '一次写入', idempotencyKey: 'same-key-1' };
     const first = await request(base, '/v1/memos', auth(bearer, body));
     const second = await request(base, '/v1/memos', auth(bearer, body));
