@@ -68,7 +68,7 @@ export function Sidebar({ open = false, allTags, pinnedTags, decks, activeFilter
   return (
     <aside className={`sidebar${open ? ' open' : ''}`} id="sidebar">
       <div className="sidebar-header">
-        <h1 className="logo"><span className="logo-mark" aria-hidden="true">A</span><span>Ankimo</span></h1>
+        <h1 className="logo"><span className="logo-mark" aria-hidden="true" /><span>Ankimo</span></h1>
       </div>
 
       <nav className="sidebar-nav" aria-label="主导航">

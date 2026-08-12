@@ -145,16 +145,10 @@ textarea {
 }
 
 .logo-mark {
-  display: grid;
-  width: 24px;
-  height: 24px;
-  place-items: center;
-  border: 1.5px solid var(--green);
-  color: var(--green);
-  font-family: inherit;
-  font-size: 14px;
-  font-weight: 700;
-  line-height: 1;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  background: url("/icon.svg?v=2") center / contain no-repeat;
 }
 
 .logo-subtitle {
