@@ -75,10 +75,9 @@ export function TagTree({ allTags, pinnedTags, activeFilter, onTagSelect, onTogg
 
     return (
       <div className="tag-node" key={fullTag}>
-        <div className={`tag-row${active ? ' active' : ''}`} style={{ paddingLeft: `${12 + (prefix ? prefix.split('::').length * 16 : 0)}px` }}>
-          <button className="tag-filter-button" type="button" aria-label={`按标签筛选 ${fullTag}`} aria-expanded={hasChildren ? expanded : undefined} onClick={onFilterClick}>
+        <div className={`tag-row${active ? ' active' : ''}`}>
+          <button className="tag-filter-button" type="button" title={fullTag} aria-label={`按标签筛选 ${fullTag}`} aria-expanded={hasChildren ? expanded : undefined} onClick={onFilterClick}>
             <span className={`tag-toggle${hasChildren ? '' : ' is-empty'}`} aria-hidden="true">{tagToggleIcon(expanded, hasChildren)}</span>
-            <span className="tag-icon" aria-hidden="true" />
             <span className="tag-name">{name}</span>
           </button>
           <button className={`tag-pin${isPinned ? ' pinned' : ''}`} data-tag={fullTag} type="button" aria-label={`${isPinned ? '取消固定' : '固定'}标签 ${fullTag}`} aria-pressed={isPinned} onClick={(event) => { event.stopPropagation(); onTogglePin(fullTag); }} />
