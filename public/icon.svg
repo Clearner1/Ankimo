@@ -1,6 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title">
   <title id="title">Ankimo</title>
-  <rect width="1024" height="1024" fill="#fffdfa"/>
   <g transform="rotate(-8 455 482)">
     <rect x="170" y="180" width="570" height="590" rx="48" fill="#1b573b"/>
   </g>
