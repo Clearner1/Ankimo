@@ -1,5 +1,14 @@
 # Ankimo migration rules
 
+## Git workflow
+
+- `main` is production. Never develop, commit, or switch branches in the original `/Users/loumac/Downloads/work project/Ankimo` worktree.
+- `codex` is the long-lived development and integration branch in `/Users/loumac/Downloads/work project/Ankimo-backup`; it must track `origin/codex`.
+- For one ordinary change, work directly on `codex`, run the relevant checks, then open a PR from `codex` to `main`.
+- Create a temporary `feature/<slug>` branch from an up-to-date `codex` only when parallel work, isolated rollback, or integration review is useful. Merge it back to `codex` by PR, then delete it. Never use `codex/<slug>` because the `codex` branch already owns that ref path.
+- Release only through a PR from `codex` to `main`; never commit or push directly to `main`. Use a merge commit, not squash, then fast-forward `codex` to `origin/main` after the release.
+- Use only the two existing worktrees. Never run `git worktree add`. Before branching, merging, or handing off, require a clean worktree and report `git status --short --branch`.
+
 - Use Ponytail full: prefer existing code, browser/platform APIs, and the smallest correct implementation.
 - Preserve `PRODUCT.md`, `DESIGN.md`, the current AnkiConnect behavior, and Anki as the only data source.
 - During the React migration, preserve the existing DOM class names, relevant IDs, element order, ARIA behavior, and `style.css` unless a task explicitly authorizes CSS edits.
