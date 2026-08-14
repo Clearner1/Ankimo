@@ -65,7 +65,7 @@ class HttpError extends Error {
 
 const OPENAPI_DOCUMENT = {
   openapi: '3.1.0',
-  info: { title: 'Ankimo AI API', version: '1.2.0' },
+  info: { title: 'Ankimo AI API', version: '1.2.1' },
   servers: [{ url: PUBLIC_API_URL }],
   components: {
     securitySchemes: {
@@ -99,7 +99,13 @@ const OPENAPI_DOCUMENT = {
         type: 'object',
         required: ['query'],
         properties: {
-          query: { type: 'string', minLength: 1, maxLength: MAX_SEARCH_QUERY_LENGTH, description: 'Native Anki search query. Use tag:未浏览 for tags, plain text for content, or a card-embedded index.' },
+          query: {
+            type: 'string',
+            minLength: 1,
+            maxLength: MAX_SEARCH_QUERY_LENGTH,
+            description: 'Native Anki search query. Use tag:未浏览 for tags, plain text for content, a card-embedded index, or nid:1234567890 for an exact note ID lookup.',
+            examples: ['tag:未浏览', 'OpenAI', 'ankimo-aihot-card-1', 'nid:1234567890']
+          },
           limit: { type: 'integer', minimum: 1, maximum: MAX_SEARCH_LIMIT, default: DEFAULT_SEARCH_LIMIT },
           offset: { type: 'integer', minimum: 0, default: 0 }
         },
@@ -151,7 +157,7 @@ const OPENAPI_DOCUMENT = {
       post: {
         operationId: 'searchNotes',
         summary: 'Search notes by tag, content, or an embedded index',
-        description: 'Passes native Anki search syntax to findNotes, then returns the matching note fields and tags.',
+        description: 'Passes native Anki search syntax to findNotes, then returns the matching note fields and tags. Use nid:<noteId> here instead of inventing a separate note-by-ID endpoint.',
         security: [{ bearerAuth: [] }],
         requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/NoteSearchInput' } } } },
         responses: {
