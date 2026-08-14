@@ -7,6 +7,7 @@
 - For one ordinary change, work directly on `codex`, run the relevant checks, then open a PR from `codex` to `main`.
 - Create a temporary `feature/<slug>` branch from an up-to-date `codex` only when parallel work, isolated rollback, or integration review is useful. Merge it back to `codex` by PR, then delete it. Never use `codex/<slug>` because the `codex` branch already owns that ref path.
 - Release only through a PR from `codex` to `main`; never commit or push directly to `main`. Use a merge commit, not squash, then fast-forward `codex` to `origin/main` after the release.
+- Use the authenticated `gh` CLI for GitHub branch, PR, review, and merge operations. Do not use GitHub app or connector tools for this repository.
 - Use only the two existing worktrees. Never run `git worktree add`. Before branching, merging, or handing off, require a clean worktree and report `git status --short --branch`.
 
 - Use Ponytail full: prefer existing code, browser/platform APIs, and the smallest correct implementation.
