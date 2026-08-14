@@ -170,7 +170,7 @@ export default function App() {
 
         <div className="content-area" id="contentArea">
           <div className="content-column">
-            <Composer client={client} onCreated={refreshAfterWrite} onToast={showToast} />
+            <Composer client={client} allTags={tags} onCreated={refreshAfterWrite} onToast={showToast} />
 
             {filter && (
               <div className="filter-info" id="filterInfo">
@@ -208,8 +208,9 @@ export default function App() {
         key={editingNoteId ?? 'closed'}
         noteId={editingNoteId}
         client={client}
+        allTags={tags}
         onClose={() => setEditingNoteId(null)}
-        onUpdated={() => notes.reload()}
+        onUpdated={refreshAfterWrite}
         onToast={showToast}
       />
 
