@@ -317,8 +317,11 @@ describe('Ankimo HTTP API', () => {
 
     expect(response.status).toBe(200);
     expect(body.openapi).toBe('3.1.0');
+    expect((body.info as Record<string, unknown>).version).toBe('1.2.1');
     expect(body.servers).toEqual([{ url: 'https://ankimo-api.yzr-stack.top' }]);
     expect(operations).toEqual(['listDecks', 'searchNotes', 'createMemo', 'createQaCard']);
+    expect(JSON.stringify(body.paths)).toContain('nid:<noteId>');
+    expect(JSON.stringify(body.components)).toContain('nid:1234567890');
     expect(body.paths).not.toHaveProperty('/health');
     expect((body.components as Record<string, unknown>)).toHaveProperty('securitySchemes');
   });
