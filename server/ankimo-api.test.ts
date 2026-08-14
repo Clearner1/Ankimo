@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { NoteInfo } from '../src/api/ankiConnect';
 import { CONNECTION_TTL_MS, createAnkimoApiServer, MAX_TOKEN_CALLS, MAX_TRUSTED_CALLS_PER_DAY, MAX_TRUSTED_CALLS_PER_MINUTE, TOKEN_TTL_MS, type AnkimoApiOptions } from './ankimo-api.mts';
 
 type FakeAnki = {
@@ -9,6 +10,8 @@ type FakeAnki = {
   modelFieldNames: (model: string) => Promise<string[]>;
   addNote: (deck: string, model: string, fields: Record<string, string>, tags?: string[]) => Promise<number>;
   findCards: (query: string) => Promise<number[]>;
+  findNotes: (query: string) => Promise<number[]>;
+  notesInfo: (notes: number[]) => Promise<NoteInfo[]>;
   suspend: (cards: number[]) => Promise<null>;
   areSuspended: (cards: number[]) => Promise<boolean[]>;
 };
@@ -22,6 +25,13 @@ function fakeAnki(overrides: Partial<FakeAnki> = {}): FakeAnki {
     modelFieldNames: async model => model === 'XXHK - 问答' ? ['问题', '答案', '引用'] : ['引用'],
     addNote: async () => 101,
     findCards: async () => [201],
+    findNotes: async () => [],
+    notesInfo: async notes => notes.map(noteId => ({
+      noteId,
+      modelName: 'XXHK - 问答',
+      fields: { 问题: { value: `note ${noteId}`, order: 0 } },
+      tags: []
+    })),
     suspend: async () => null,
     areSuspended: async () => [true],
     ...overrides
@@ -257,7 +267,49 @@ describe('Ankimo HTTP API', () => {
     expect(writes).toBe(1);
   });
 
-  it('exposes only the three AI operations in OpenAPI', async () => {
+  it('searches notes with native Anki queries and paginates newest first', async () => {
+    const queries: string[] = [];
+    const infoCalls: number[][] = [];
+    const base = await start({ client: fakeAnki({
+      findNotes: async query => {
+        queries.push(query);
+        if (query === 'tag:未浏览') return [101, 102, 102, 103];
+        if (query === 'ankimo-aihot-card-1') return [102];
+        return [];
+      },
+      notesInfo: async notes => {
+        infoCalls.push(notes);
+        return [...notes].reverse().map(noteId => ({
+          noteId,
+          modelName: 'XXHK - 问答',
+          fields: { 问题: { value: `note ${noteId}`, order: 0 } },
+          tags: ['未浏览']
+        }));
+      }
+    }) });
+    const bearer = await trustedToken(base);
+
+    const tagged = await request(base, '/v1/notes/search', auth(bearer, {
+      query: 'tag:未浏览', limit: 2, offset: 1
+    }));
+    expect(tagged.response.status).toBe(200);
+    expect(tagged.body).toMatchObject({
+      total: 3,
+      offset: 1,
+      limit: 2,
+      notes: [{ noteId: 102 }, { noteId: 101 }]
+    });
+
+    const indexed = await request(base, '/v1/notes/search', auth(bearer, { query: 'ankimo-aihot-card-1' }));
+    expect(indexed.body).toMatchObject({ total: 1, offset: 0, limit: 30, notes: [{ noteId: 102 }] });
+
+    const missing = await request(base, '/v1/notes/search', auth(bearer, { query: '没有结果' }));
+    expect(missing.body).toEqual({ notes: [], total: 0, offset: 0, limit: 30 });
+    expect(queries).toEqual(['tag:未浏览', 'ankimo-aihot-card-1', '没有结果']);
+    expect(infoCalls).toEqual([[102, 101], [102]]);
+  });
+
+  it('exposes only the four AI operations in OpenAPI', async () => {
     const base = await start({ client: fakeAnki() });
     const { response, body } = await request(base, '/openapi.json');
     const operations = Object.values(body.paths as Record<string, Record<string, { operationId: string }>>)
@@ -266,7 +318,7 @@ describe('Ankimo HTTP API', () => {
     expect(response.status).toBe(200);
     expect(body.openapi).toBe('3.1.0');
     expect(body.servers).toEqual([{ url: 'https://ankimo-api.yzr-stack.top' }]);
-    expect(operations).toEqual(['listDecks', 'createMemo', 'createQaCard']);
+    expect(operations).toEqual(['listDecks', 'searchNotes', 'createMemo', 'createQaCard']);
     expect(body.paths).not.toHaveProperty('/health');
     expect((body.components as Record<string, unknown>)).toHaveProperty('securitySchemes');
   });

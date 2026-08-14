@@ -15,6 +15,9 @@ export const MAX_TRUSTED_CALLS_PER_MINUTE = 20;
 export const MAX_TRUSTED_CALLS_PER_DAY = 200;
 export const MAX_JSON_BODY_BYTES = 256 * 1024;
 const MAX_IDEMPOTENCY_RECORDS = 1_000;
+const MAX_SEARCH_QUERY_LENGTH = 1_000;
+const DEFAULT_SEARCH_LIMIT = 30;
+const MAX_SEARCH_LIMIT = 100;
 const DEFAULT_DECK = 'mubu';
 const PUBLIC_API_URL = 'https://ankimo-api.yzr-stack.top';
 const OPENAPI_URL = `${PUBLIC_API_URL}/openapi.json`;
@@ -22,7 +25,7 @@ const CONNECTION_PREFIX = '/connect/';
 const SECRET_HEADERS = { 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' };
 
 type ApiClient = Pick<AnkiConnect,
-  'deckNames' | 'modelFieldNames' | 'addNote' | 'findCards' | 'suspend' | 'areSuspended'>;
+  'deckNames' | 'modelFieldNames' | 'addNote' | 'findCards' | 'findNotes' | 'notesInfo' | 'suspend' | 'areSuspended'>;
 type NoteWriter = typeof createTextNote;
 type JsonObject = Record<string, unknown>;
 type JsonResponse = { status: number; body: JsonObject; headers?: Record<string, string> };
@@ -62,7 +65,7 @@ class HttpError extends Error {
 
 const OPENAPI_DOCUMENT = {
   openapi: '3.1.0',
-  info: { title: 'Ankimo AI API', version: '1.1.0' },
+  info: { title: 'Ankimo AI API', version: '1.2.0' },
   servers: [{ url: PUBLIC_API_URL }],
   components: {
     securitySchemes: {
@@ -92,6 +95,44 @@ const OPENAPI_DOCUMENT = {
         },
         additionalProperties: false
       },
+      NoteSearchInput: {
+        type: 'object',
+        required: ['query'],
+        properties: {
+          query: { type: 'string', minLength: 1, maxLength: MAX_SEARCH_QUERY_LENGTH, description: 'Native Anki search query. Use tag:未浏览 for tags, plain text for content, or a card-embedded index.' },
+          limit: { type: 'integer', minimum: 1, maximum: MAX_SEARCH_LIMIT, default: DEFAULT_SEARCH_LIMIT },
+          offset: { type: 'integer', minimum: 0, default: 0 }
+        },
+        additionalProperties: false
+      },
+      NoteInfo: {
+        type: 'object',
+        required: ['noteId', 'fields'],
+        properties: {
+          noteId: { type: 'integer' },
+          modelName: { type: 'string' },
+          fields: {
+            type: 'object',
+            additionalProperties: {
+              type: 'object',
+              required: ['value'],
+              properties: { value: { type: 'string' }, order: { type: 'integer' } }
+            }
+          },
+          tags: { type: 'array', items: { type: 'string' } },
+          mod: { type: 'integer' }
+        }
+      },
+      NoteSearchResult: {
+        type: 'object',
+        required: ['notes', 'total', 'offset', 'limit'],
+        properties: {
+          notes: { type: 'array', items: { $ref: '#/components/schemas/NoteInfo' } },
+          total: { type: 'integer' },
+          offset: { type: 'integer' },
+          limit: { type: 'integer' }
+        }
+      },
       NoteCreated: { type: 'object', required: ['noteId'], properties: { noteId: { type: 'integer' } } },
       DeckList: { type: 'object', required: ['decks'], properties: { decks: { type: 'array', items: { type: 'string' } } } }
     }
@@ -104,6 +145,19 @@ const OPENAPI_DOCUMENT = {
         description: 'Use this before overriding the default mubu deck.',
         security: [{ bearerAuth: [] }],
         responses: { '200': { description: 'Available Anki decks', content: { 'application/json': { schema: { $ref: '#/components/schemas/DeckList' } } } } }
+      }
+    },
+    '/v1/notes/search': {
+      post: {
+        operationId: 'searchNotes',
+        summary: 'Search notes by tag, content, or an embedded index',
+        description: 'Passes native Anki search syntax to findNotes, then returns the matching note fields and tags.',
+        security: [{ bearerAuth: [] }],
+        requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/NoteSearchInput' } } } },
+        responses: {
+          '200': { description: 'Matching notes', content: { 'application/json': { schema: { $ref: '#/components/schemas/NoteSearchResult' } } } },
+          '502': { description: 'Anki could not execute the search' }
+        }
       }
     },
     '/v1/memos': {
@@ -364,6 +418,7 @@ function routeMethods(pathname: string): readonly string[] | undefined {
     '/api/ai-connections': ['POST'],
     '/api/ai-tokens': ['POST', 'DELETE'],
     '/v1/decks': ['GET'],
+    '/v1/notes/search': ['POST'],
     '/v1/memos': ['POST'],
     '/v1/qa-cards': ['POST']
   }[pathname];
@@ -531,6 +586,32 @@ async function handleRequest(
     return;
   }
   const body = objectBody(await readJson(request));
+  if (pathname === '/v1/notes/search') {
+    onlyFields(body, ['query', 'limit', 'offset']);
+    const query = textField(body, 'query', MAX_SEARCH_QUERY_LENGTH);
+    const limit = body.limit ?? DEFAULT_SEARCH_LIMIT;
+    const offset = body.offset ?? 0;
+    if (typeof limit !== 'number' || !Number.isSafeInteger(limit) || limit < 1 || limit > MAX_SEARCH_LIMIT) {
+      throw new HttpError(400, 'INVALID_INPUT', `limit 必须是 1 到 ${MAX_SEARCH_LIMIT} 的整数`);
+    }
+    if (typeof offset !== 'number' || !Number.isSafeInteger(offset) || offset < 0) {
+      throw new HttpError(400, 'INVALID_INPUT', 'offset 必须是非负整数');
+    }
+    try {
+      const noteIds = [...new Set(await client.findNotes(query))].reverse();
+      const pageIds = noteIds.slice(offset, offset + limit);
+      const found = pageIds.length ? await client.notesInfo(pageIds) : [];
+      const byId = new Map(found.map(note => [note.noteId, note]));
+      const notes = pageIds.flatMap(noteId => {
+        const note = byId.get(noteId);
+        return note ? [note] : [];
+      });
+      sendJson(response, json(200, { notes, total: noteIds.length, offset, limit }));
+    } catch {
+      sendJson(response, json(502, { error: { code: 'ANKI_SEARCH_FAILED', message: 'Anki 无法执行搜索，请检查查询语法和连接状态' } }));
+    }
+    return;
+  }
   onlyFields(body, pathname === '/v1/memos'
     ? ['content', 'tags', 'idempotencyKey']
     : ['question', 'answer', 'deck', 'tags', 'idempotencyKey']);
