@@ -2,12 +2,14 @@ import { useEffect, useState } from 'react';
 import type { NoteInfo } from '../../api/ankiConnect';
 import { AnkiConnect } from '../../api/ankiConnect';
 import { noteFieldValue } from '../../domain/notes';
+import { TagInput } from '../navigation/TagInput';
 
 export type EditModalApi = Pick<AnkiConnect, 'notesInfo' | 'updateNote'>;
 export type Toast = (message: string, type?: 'success' | 'error') => void;
 export type EditModalProps = {
   noteId: number | null;
   client?: EditModalApi;
+  allTags?: readonly string[];
   onClose: () => void;
   onUpdated?: (noteId: number) => void | Promise<void>;
   onToast?: Toast;
@@ -19,7 +21,7 @@ function errorMessage(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
 }
 
-export function EditModal({ noteId, client = defaultClient, onClose, onUpdated, onToast }: EditModalProps) {
+export function EditModal({ noteId, client = defaultClient, allTags = [], onClose, onUpdated, onToast }: EditModalProps) {
   const [note, setNote] = useState<NoteInfo | null>(null);
   const [fields, setFields] = useState<Record<string, string>>({});
   const [tags, setTags] = useState('');
@@ -117,7 +119,7 @@ export function EditModal({ noteId, client = defaultClient, onClose, onUpdated, 
         </div>
         <div className="edit-modal-tags">
           <label htmlFor="editTagsInput">标签 <span className="edit-tags-hint">（空格分隔）</span></label>
-          <input id="editTagsInput" value={tags} onChange={event => setTags(event.target.value)} />
+          <TagInput id="editTagsInput" value={tags} allTags={allTags} disabled={saving} onChange={setTags} />
         </div>
         <div className="edit-modal-actions">
           <button id="editModalCancel" className="edit-modal-cancel" type="button" onClick={onClose}>取消</button>

@@ -1170,6 +1170,12 @@ textarea {
   align-items: center;
 }
 
+.tag-autocomplete {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+}
+
 .tag-input-wrap input {
   width: 100%;
   min-height: 42px;
@@ -1191,6 +1197,41 @@ textarea {
 
 .tag-input-mark {
   display: none;
+}
+
+.tag-suggestions {
+  position: absolute;
+  z-index: 10;
+  top: calc(100% + 4px);
+  right: 0;
+  left: 0;
+  max-height: 240px;
+  overflow-y: auto;
+  border: 1px solid var(--line-strong);
+  background: var(--paper-strong);
+}
+
+.tag-suggestion {
+  display: block;
+  width: 100%;
+  min-height: 42px;
+  padding: 8px 11px;
+  border-bottom: 1px solid var(--line);
+  background: var(--paper-strong);
+  color: var(--graphite);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tag-suggestion:last-child {
+  border-bottom: 0;
+}
+
+.tag-suggestion:hover,
+.tag-suggestion.is-active {
+  background: var(--green-soft);
+  color: var(--green-dark);
 }
 
 .composer-actions {
@@ -1817,6 +1858,12 @@ textarea {
 .edit-modal-tags input {
   min-height: 42px;
   font-size: 12px;
+}
+
+.edit-modal-tags .tag-suggestions {
+  position: static;
+  max-height: 180px;
+  margin-top: 4px;
 }
 
 .edit-modal-actions {

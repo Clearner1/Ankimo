@@ -8,6 +8,7 @@ import {
   suspendMemoNote,
   type NoteMode
 } from '../../domain/noteWriting';
+import { TagInput } from '../navigation/TagInput';
 
 export { MEMO_MODEL, QA_MODEL, suspendMemoNote, type NoteMode } from '../../domain/noteWriting';
 
@@ -19,6 +20,7 @@ export type ComposerApi = Pick<AnkiConnect,
 
 export type ComposerProps = {
   client?: ComposerApi;
+  allTags?: readonly string[];
   onCreated?: (noteId: number) => void | Promise<void>;
   onToast?: ComposerToast;
 };
@@ -235,7 +237,7 @@ export async function writeComposerNote(
   return { error: `保存失败: AnkiConnect 没有返回 note id，无法确认创建结果${warning}` };
 }
 
-export function Composer({ client = defaultClient, onCreated, onToast }: ComposerProps) {
+export function Composer({ client = defaultClient, allTags = [], onCreated, onToast }: ComposerProps) {
   const [mode, setMode] = useState<NoteMode>('memo');
   const [decks, setDecks] = useState<string[]>([]);
   const [models, setModels] = useState<string[]>([]);
@@ -493,12 +495,11 @@ export function Composer({ client = defaultClient, onCreated, onToast }: Compose
       <input id="advancedToggle" className="visually-hidden" type="checkbox" checked={advanced} disabled={saving} onChange={event => setAdvanced(event.target.checked)} />
       <div className="composer-footer">
         <div className="tag-input-wrap">
-          <input id="tagInput" value={tags} disabled={saving} onChange={event => {
-            const nextTags = event.target.value;
+          <TagInput id="tagInput" value={tags} allTags={allTags} disabled={saving} onChange={nextTags => {
             setPreferences(current => mode === 'memo'
               ? { ...current, memo: { ...current.memo, tags: nextTags } }
               : { ...current, qa: { ...current.qa, tags: nextTags } });
-          }} placeholder="添加标签，用空格分隔" aria-label="标签" />
+          }} placeholder="添加标签，用空格分隔" />
         </div>
         <div className="composer-actions">
           <label className="advanced-toggle" htmlFor="advancedToggle">高级设置 <span className="advanced-chevron" aria-hidden="true"><svg viewBox="0 0 12 7" width="12" height="7" focusable="false"><path d="M1 1l5 5 5-5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.25" /></svg></span></label>
