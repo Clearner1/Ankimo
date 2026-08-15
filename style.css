@@ -819,334 +819,6 @@
   opacity: .8;
 }
 
-/* Composer */
-
-.input-card {
-  position: relative;
-  margin: 0 0 25px;
-  padding: 31px 0 0;
-  border-bottom: 1px solid var(--line-strong);
-  background: transparent;
-}
-
-.input-card:focus-within {
-  border-bottom-color: var(--green);
-}
-
-.composer-head {
-  display: flex;
-  min-height: 42px;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 20px;
-}
-
-.composer-head h2 {
-  margin: 0;
-  color: var(--graphite);
-  font-size: 21px;
-  font-weight: 650;
-  letter-spacing: -.02em;
-  line-height: 1.25;
-}
-
-.composer-hint {
-  max-width: 680px;
-  margin: 7px 0 22px;
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.6;
-}
-
-.mode-switch {
-  display: inline-flex;
-  flex: 0 0 auto;
-  border: 1px solid var(--line-strong);
-  background: var(--paper-strong);
-}
-
-.mode-label {
-  display: inline-flex;
-  min-width: 92px;
-  min-height: 40px;
-  align-items: center;
-  justify-content: center;
-  padding: 7px 13px;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1;
-  transition: background var(--transition), color var(--transition);
-}
-
-.mode-label + .mode-label {
-  border-left: 1px solid var(--line-strong);
-}
-
-.mode-label:hover {
-  background: var(--rail);
-  color: var(--graphite);
-}
-
-#noteModeMemo:checked ~ .composer-head .mode-label[for="noteModeMemo"],
-#noteModeQa:checked ~ .composer-head .mode-label[for="noteModeQa"] {
-  background: var(--green);
-  color: var(--paper-strong);
-}
-
-#noteModeMemo:focus-visible ~ .composer-head .mode-label[for="noteModeMemo"],
-#noteModeQa:focus-visible ~ .composer-head .mode-label[for="noteModeQa"] {
-  outline: 3px solid color-mix(in srgb, var(--focus) 32%, transparent);
-  outline-offset: 2px;
-}
-
-.composer-fields {
-  display: block;
-}
-
-.composer-fields textarea {
-  display: block;
-  width: 100%;
-  min-height: 130px;
-  padding: 15px 0 13px;
-  border: 0;
-  border-top: 1px solid var(--line);
-  outline: 0;
-  background: transparent;
-  color: var(--graphite);
-  font-size: 15px;
-  line-height: 1.75;
-}
-
-.composer-fields textarea:focus {
-  border-top-color: var(--green);
-}
-
-.composer-fields textarea::placeholder {
-  color: var(--faint);
-}
-
-.composer-images {
-  display: grid;
-  gap: 12px;
-  padding: 14px 0 4px;
-  border-top: 1px solid var(--line);
-}
-
-.composer-image-dropzone {
-  display: flex;
-  min-height: 52px;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  padding: 9px 12px;
-  border: 1px dashed var(--line-strong);
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.4;
-  cursor: pointer;
-  transition: border-color var(--transition), background var(--transition), color var(--transition);
-}
-
-.composer-image-dropzone:hover {
-  border-color: var(--green);
-  background: var(--green-wash);
-  color: var(--graphite);
-}
-
-#imageInput:disabled + .composer-image-dropzone {
-  cursor: default;
-  opacity: 0.6;
-}
-
-#imageInput:focus-visible + .composer-image-dropzone {
-  outline: 3px solid color-mix(in srgb, var(--focus) 32%, transparent);
-  outline-offset: 2px;
-}
-
-.composer-image-dropzone small {
-  color: var(--faint);
-  font-size: 10px;
-}
-
-.composer-image-previews {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
-  gap: 10px;
-}
-
-.composer-image-preview {
-  position: relative;
-  min-width: 0;
-  aspect-ratio: 4 / 3;
-  margin: 0;
-  overflow: hidden;
-  border: 1px solid var(--line);
-  background: var(--paper-strong);
-}
-
-.composer-image-preview img {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.composer-image-remove {
-  position: absolute;
-  right: 5px;
-  bottom: 5px;
-  padding: 4px 7px;
-  border: 0;
-  background: color-mix(in srgb, var(--graphite) 82%, transparent);
-  color: var(--paper-strong);
-  font-size: 10px;
-  cursor: pointer;
-}
-
-.composer-image-remove:hover {
-  background: var(--danger);
-}
-
-.composer-image-remove:disabled {
-  cursor: default;
-  opacity: 0.55;
-}
-
-#noteModeMemo:checked ~ .composer-fields #backInput {
-  display: none;
-}
-
-#noteModeQa:checked ~ .composer-fields {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 24px;
-}
-
-#noteModeQa:checked ~ .composer-fields #backInput {
-  display: block;
-}
-
-#noteModeQa:checked ~ .composer-fields #backInput {
-  border-left: 1px solid var(--line);
-  padding-left: 24px;
-}
-
-.composer-footer {
-  display: flex;
-  min-height: 72px;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-  padding: 12px 0 17px;
-}
-
-.tag-input-wrap {
-  display: flex;
-  min-width: 0;
-  flex: 1 1 auto;
-  align-items: center;
-}
-
-.composer-actions {
-  display: flex;
-  min-height: 42px;
-  align-items: center;
-  gap: 12px;
-}
-
-.advanced-toggle {
-  display: inline-flex;
-  min-height: 42px;
-  align-items: center;
-  gap: 7px;
-  padding: 8px 4px;
-  color: var(--muted);
-  font-size: 12px;
-  cursor: pointer;
-  transition: color var(--transition);
-}
-
-.advanced-toggle:hover {
-  color: var(--graphite);
-}
-
-.advanced-chevron {
-  display: inline-flex;
-  color: currentColor;
-  transition: transform var(--transition);
-}
-
-#advancedToggle:checked ~ .composer-footer .advanced-chevron {
-  transform: rotate(180deg);
-}
-
-#advancedToggle:focus-visible ~ .composer-footer .advanced-toggle {
-  outline: 3px solid color-mix(in srgb, var(--focus) 32%, transparent);
-  outline-offset: 2px;
-}
-
-.advanced-controls {
-  display: none;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 24px;
-  padding: 15px 0 25px;
-  border-top: 1px solid var(--line);
-}
-
-#advancedToggle:checked ~ .advanced-controls {
-  display: grid;
-}
-
-.control-field {
-  display: grid;
-  gap: 7px;
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.control-field select {
-  width: 100%;
-  min-height: 40px;
-  padding: 7px 10px;
-  border: 1px solid var(--line-strong);
-  outline: 0;
-  background: var(--paper-strong);
-  color: var(--graphite);
-  font-size: 12px;
-}
-
-.control-field select:focus {
-  border-color: var(--green);
-}
-
-.save-btn {
-  display: inline-flex;
-  min-width: 92px;
-  min-height: 44px;
-  align-items: center;
-  justify-content: center;
-  padding: 9px 20px;
-  background: var(--green);
-  color: var(--paper-strong);
-  font-size: 12px;
-  font-weight: 650;
-  transition: background var(--transition), opacity var(--transition);
-}
-
-.save-btn:hover {
-  background: var(--green-dark);
-}
-
-.save-btn:active {
-  background: var(--green-dark);
-}
-
-.save-btn:disabled {
-  opacity: .52;
-}
-
 /* Stream and filters */
 
 .filter-info {
@@ -1227,7 +899,6 @@
 /* Explicit non-card compatibility hooks */
 
 .stats-card,
-.input-card,
 .toast {
   border-radius: 0;
 }
@@ -1247,8 +918,7 @@
   .tag-row .tag-filter-button,
   .tag-row .tag-pin,
   .deck-item,
-  .tag-search-box input,
-  .mode-label {
+  .tag-search-box input {
     min-height: 44px;
   }
 
@@ -1338,55 +1008,6 @@
     padding: 0 8px;
   }
 
-  .input-card {
-    padding-top: 26px;
-  }
-
-  .composer-head {
-    align-items: stretch;
-    flex-direction: column;
-    gap: 14px;
-  }
-
-  .mode-switch {
-    align-self: flex-start;
-  }
-
-  .composer-hint {
-    margin-bottom: 17px;
-  }
-
-  .composer-fields textarea {
-    min-height: 116px;
-    font-size: 15px;
-  }
-
-  #noteModeQa:checked ~ .composer-fields {
-    display: block;
-  }
-
-  #noteModeQa:checked ~ .composer-fields #backInput {
-    margin-top: 16px;
-    border-top: 1px solid var(--line);
-    border-left: 0;
-    padding-left: 0;
-  }
-
-  .composer-footer {
-    align-items: stretch;
-    flex-direction: column;
-    gap: 10px;
-    padding-top: 12px;
-  }
-
-  .composer-actions {
-    justify-content: flex-end;
-  }
-
-  .advanced-controls {
-    gap: 14px;
-  }
-
   .toast {
     right: 18px;
     bottom: 18px;
@@ -1444,54 +1065,6 @@
     font-size: 12px;
   }
 
-  .composer-head h2 {
-    font-size: 21px;
-  }
-
-  .mode-switch {
-    width: 100%;
-  }
-
-  .mode-label {
-    width: 50%;
-    min-width: 0;
-  }
-
-  .composer-hint {
-    margin-top: 8px;
-    font-size: 12px;
-  }
-
-  .composer-fields textarea {
-    min-height: 104px;
-    padding-top: 12px;
-    padding-bottom: 11px;
-    font-size: 14px;
-  }
-
-  .composer-footer {
-    min-height: 0;
-  }
-
-  .composer-actions {
-    width: 100%;
-    justify-content: space-between;
-  }
-
-  .advanced-toggle,
-  .save-btn {
-    min-height: 44px;
-  }
-
-  .save-btn {
-    flex: 1 1 auto;
-  }
-
-  .advanced-controls {
-    grid-template-columns: 1fr;
-    gap: 13px;
-  }
-
   .filter-info {
     align-items: flex-start;
     flex-wrap: wrap;
@@ -1517,8 +1090,7 @@
   .search-toggle:hover,
   .search-close:hover,
   .blur-toggle-btn:hover,
-  .sync-btn:hover,
-  .advanced-toggle:hover {
+  .sync-btn:hover {
     background: transparent;
   }
 }
@@ -1530,8 +1102,7 @@
 
   .sidebar,
   .section-toggle,
-  .tag-toggle::before,
-  .advanced-chevron {
+  .tag-toggle::before {
     transition: none;
   }
 }

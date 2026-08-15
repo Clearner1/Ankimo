@@ -1,0 +1,181 @@
+.inputCard {
+  position: relative;
+  margin: 0 0 25px;
+  padding: 31px 0 0;
+  border-bottom: 1px solid var(--color-border-strong);
+  background: transparent;
+}
+
+.inputCard:focus-within {
+  border-bottom-color: var(--color-action);
+}
+
+.composerHead {
+  display: flex;
+  min-height: 42px;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.composerHead h2 {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: 21px;
+  font-weight: 650;
+  letter-spacing: -.02em;
+  line-height: 1.25;
+}
+
+.composerHint {
+  max-width: 680px;
+  margin: 7px 0 22px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.composerFields {
+  display: block;
+}
+
+.controlField {
+  display: grid;
+  gap: 7px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.tagInputWrap {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: center;
+}
+
+.input {
+  width: 100%;
+  min-height: var(--size-touch-target);
+  padding: 8px 12px;
+  border: 1px solid var(--color-border-strong);
+  outline: 0;
+  background: var(--color-surface-raised);
+  color: var(--color-text-primary);
+  font-size: 12px;
+}
+
+.input:focus {
+  border-color: var(--color-action);
+  outline: 3px solid color-mix(in srgb, var(--color-focus) 32%, transparent);
+  outline-offset: 2px;
+}
+
+.composerFooter {
+  display: flex;
+  min-height: 72px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 12px 0 17px;
+}
+
+.composerActions {
+  display: flex;
+  min-height: var(--size-touch-target);
+  align-items: center;
+  gap: 12px;
+}
+
+.secondaryButton {
+  min-height: var(--size-touch-target);
+  padding: 8px;
+  color: var(--color-text-muted);
+}
+
+.secondaryButton:hover {
+  color: var(--color-text-primary);
+}
+
+.saveBtn {
+  display: inline-flex;
+  min-width: 92px;
+  min-height: var(--size-touch-target);
+  align-items: center;
+  justify-content: center;
+  padding: 9px 20px;
+  border: 0;
+  background: var(--color-action);
+  color: var(--color-surface-raised);
+  font-size: 12px;
+  font-weight: 650;
+  transition: background var(--motion-transition), opacity var(--motion-transition);
+}
+
+.saveBtn:hover,
+.saveBtn:active {
+  background: var(--color-action-strong);
+}
+
+.saveBtn:disabled,
+.secondaryButton:disabled {
+  opacity: .52;
+}
+
+@media (max-width: 768px) {
+  .inputCard {
+    padding-top: 26px;
+  }
+
+  .composerHead {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .composerHint {
+    margin-bottom: 17px;
+  }
+
+  .composerFooter {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+    padding-top: 12px;
+  }
+
+  .composerActions {
+    justify-content: flex-end;
+  }
+}
+
+@media (max-width: 480px) {
+  .composerHead h2 {
+    font-size: 21px;
+  }
+
+  .composerHint {
+    margin-top: 8px;
+    font-size: 12px;
+  }
+
+  .composerFooter {
+    min-height: 0;
+  }
+
+  .composerActions {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
+
+@media (hover: none) {
+  .secondaryButton:hover {
+    color: var(--color-text-muted);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .saveBtn {
+    transition: none;
+  }
+}
