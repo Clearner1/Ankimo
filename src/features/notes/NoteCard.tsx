@@ -57,7 +57,7 @@ export function NoteCard({ note, blurAnswers = true, onEdit, onDelete, onTagClic
         {validModified ? <time className={`note-time ${styles.time}`} dateTime={validModified.toISOString()}>{formatDate(validModified)}</time> : <span className={`note-time ${styles.time}`} aria-hidden="true" />}
         {(onEdit || onDelete) && (
           <details className={`note-actions ${styles.actions}`}>
-            <summary className={styles.actionTrigger} aria-label={`笔记 ${note.noteId} 更多操作`}>更多</summary>
+            <summary className={styles.actionTrigger} aria-label={`笔记 ${note.noteId} 更多操作`}>…</summary>
             <div className={styles.actionMenu}>
               {onEdit && <button className={`edit-btn ${styles.actionButton}`} data-id={note.noteId} type="button" aria-label={`编辑笔记 ${note.noteId}`} onClick={event => { closeMenu(event); onEdit(note.noteId); }}>编辑</button>}
               {onDelete && <button className={`delete-btn ${styles.actionButton} ${styles.deleteButton}`} data-id={note.noteId} type="button" aria-label={`删除笔记 ${note.noteId}`} onClick={event => { if (window.confirm('确定删除这条笔记吗？')) { closeMenu(event); void onDelete(note.noteId); } }}>删除</button>}
