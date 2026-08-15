@@ -1,0 +1,54 @@
+:root {
+  --color-surface: #fffdfa;
+  --color-surface-raised: #ffffff;
+  --color-surface-rail: #f4f6f2;
+  --color-surface-rail-deep: #edf1ed;
+  --color-text-primary: #26302b;
+  --color-text-secondary: #39443e;
+  --color-text-muted: #66736c;
+  --color-text-faint: #6b766f;
+  --color-border: #dfe5df;
+  --color-border-strong: #c7d1ca;
+  --color-action: #246b4a;
+  --color-action-strong: #1b573b;
+  --color-action-soft: #e7f1e9;
+  --color-action-wash: #f1f7f2;
+  --color-danger: #a63d3d;
+  --color-danger-soft: #fbf1f1;
+  --color-flag-red: #c44444;
+  --color-flag-orange: #bd741d;
+  --color-flag-green: #388254;
+  --layout-sidebar-width: 248px;
+  --layout-content-max: 1080px;
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --color-focus: #176d49;
+  --motion-transition: 160ms ease;
+
+  /* Legacy aliases keep unmigrated global selectors visually identical. */
+  --paper: var(--color-surface);
+  --paper-strong: var(--color-surface-raised);
+  --rail: var(--color-surface-rail);
+  --rail-deep: var(--color-surface-rail-deep);
+  --graphite: var(--color-text-primary);
+  --graphite-soft: var(--color-text-secondary);
+  --muted: var(--color-text-muted);
+  --faint: var(--color-text-faint);
+  --line: var(--color-border);
+  --line-strong: var(--color-border-strong);
+  --green: var(--color-action);
+  --green-dark: var(--color-action-strong);
+  --green-soft: var(--color-action-soft);
+  --green-wash: var(--color-action-wash);
+  --danger: var(--color-danger);
+  --danger-soft: var(--color-danger-soft);
+  --flag-red: var(--color-flag-red);
+  --flag-orange: var(--color-flag-orange);
+  --flag-green: var(--color-flag-green);
+  --sidebar-width: var(--layout-sidebar-width);
+  --content-max: var(--layout-content-max);
+  --font: var(--font-sans);
+  --mono: var(--font-mono);
+  --focus: var(--color-focus);
+  --transition: var(--motion-transition);
+}
