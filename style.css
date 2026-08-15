@@ -43,7 +43,7 @@
   width: 28px;
   height: 28px;
   flex: 0 0 28px;
-  background: url("/icon.svg?v=3") center / contain no-repeat;
+  background: url("/icon.svg?v=4") center / contain no-repeat;
 }
 
 .logo-subtitle {
@@ -632,193 +632,6 @@
   padding-bottom: 15px;
 }
 
-/* Utility bar */
-
-.top-bar {
-  position: sticky;
-  z-index: 20;
-  top: 0;
-  display: flex;
-  min-height: 62px;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 30px;
-  background: var(--paper);
-  border-bottom: 1px solid var(--line);
-}
-
-.menu-btn,
-.search-toggle,
-.search-close,
-.blur-toggle-btn,
-.sync-btn {
-  display: inline-flex;
-  min-width: 44px;
-  min-height: 42px;
-  align-items: center;
-  justify-content: center;
-  appearance: none;
-  background: transparent;
-  color: var(--graphite-soft);
-  transition: background var(--transition), color var(--transition), border-color var(--transition);
-}
-
-.menu-btn {
-  display: none;
-}
-
-.menu-btn:hover,
-.search-toggle:hover,
-.search-close:hover,
-.blur-toggle-btn:hover,
-.sync-btn:hover {
-  background: var(--rail);
-  color: var(--graphite);
-}
-
-.search-toggle {
-  display: none;
-}
-
-.search-box {
-  position: relative;
-  display: flex;
-  width: min(100%, 720px);
-  min-height: 42px;
-  align-items: center;
-  border: 1px solid var(--line-strong);
-  background: var(--paper-strong);
-  transition: border-color var(--transition), background var(--transition);
-}
-
-.search-box:focus-within {
-  border-color: var(--green);
-  background: var(--paper-strong);
-}
-
-.search-icon {
-  position: relative;
-  display: block;
-  width: 16px;
-  height: 16px;
-  flex: 0 0 16px;
-  margin-left: 13px;
-  border: 1.5px solid var(--muted);
-  border-radius: 50%;
-}
-
-.search-icon::after {
-  position: absolute;
-  right: -4px;
-  bottom: -3px;
-  width: 6px;
-  height: 1.5px;
-  background: var(--muted);
-  content: "";
-  transform: rotate(45deg);
-  transform-origin: left center;
-}
-
-.search-box input {
-  width: 100%;
-  min-width: 0;
-  min-height: 40px;
-  padding: 7px 12px 7px 13px;
-  border: 0;
-  outline: 0;
-  background: transparent;
-  color: var(--graphite);
-  font-size: 14px;
-}
-
-.search-box input::placeholder {
-  color: var(--faint);
-}
-
-.search-close {
-  display: none;
-  width: 44px;
-  min-width: 44px;
-  border-left: 1px solid var(--line);
-}
-
-.connection-status {
-  position: relative;
-  display: inline-flex;
-  min-height: 42px;
-  align-items: center;
-  gap: 8px;
-  margin-left: auto;
-  padding: 0 2px 0 4px;
-  color: var(--muted);
-  font-size: 12px;
-  white-space: nowrap;
-}
-
-.connection-status::before {
-  display: inline-block;
-  width: 7px;
-  height: 7px;
-  flex: 0 0 7px;
-  border: 1px solid currentColor;
-  border-radius: 50%;
-  background: currentColor;
-  content: "";
-}
-
-.connection-status.is-checking {
-  color: var(--flag-orange);
-}
-
-.connection-status.is-connected {
-  color: var(--green);
-}
-
-.connection-status.is-disconnected {
-  color: var(--danger);
-}
-
-.connection-status.is-disconnected::before {
-  background: transparent;
-}
-
-.blur-toggle-btn,
-.sync-btn {
-  padding: 0 11px;
-  border: 1px solid var(--line-strong);
-  color: var(--graphite-soft);
-  font-size: 12px;
-  white-space: nowrap;
-}
-
-.blur-toggle-btn.active {
-  border-color: var(--green);
-  background: var(--green-soft);
-  color: var(--green-dark);
-}
-
-.sync-btn.is-busy {
-  border-color: var(--line-strong);
-  background: var(--rail);
-  color: var(--muted);
-}
-
-.sync-btn.is-success {
-  border-color: var(--green);
-  background: var(--green-soft);
-  color: var(--green-dark);
-}
-
-.sync-btn.is-error {
-  border-color: var(--danger);
-  background: var(--danger-soft);
-  color: var(--danger);
-}
-
-.sync-btn:disabled {
-  opacity: .8;
-}
-
 /* Stream and filters */
 
 .filter-info {
@@ -940,74 +753,6 @@
     display: block;
   }
 
-  .menu-btn {
-    display: inline-flex;
-    width: 44px;
-    flex: 0 0 44px;
-  }
-
-  .top-bar {
-    min-height: 60px;
-    gap: 8px;
-    padding: 9px 18px;
-  }
-
-  .search-toggle {
-    display: inline-flex;
-    width: 44px;
-    flex: 0 0 44px;
-    font-size: 0;
-  }
-
-  .search-toggle::before {
-    width: 15px;
-    height: 15px;
-    border: 1.5px solid currentColor;
-    border-radius: 50%;
-    content: "";
-  }
-
-  .search-toggle::after {
-    position: absolute;
-    width: 6px;
-    height: 1.5px;
-    margin: 13px 0 0 12px;
-    background: currentColor;
-    content: "";
-    transform: rotate(45deg);
-  }
-
-  .search-box {
-    display: none;
-    flex: 1 1 auto;
-  }
-
-  .search-box.expanded {
-    display: flex;
-    width: auto;
-  }
-
-  .search-box.expanded .search-close {
-    display: inline-flex;
-  }
-
-  .top-bar:has(.search-box.expanded) .search-toggle {
-    display: none;
-  }
-
-  .connection-status {
-    max-width: 126px;
-    margin-left: auto;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .blur-toggle-btn,
-  .sync-btn {
-    min-width: 44px;
-    padding: 0 8px;
-  }
-
   .toast {
     right: 18px;
     bottom: 18px;
@@ -1018,53 +763,6 @@
 /* Phone */
 
 @media (max-width: 480px) {
-  .top-bar {
-    gap: 4px;
-    padding: 8px 10px;
-  }
-
-  .menu-btn,
-  .search-toggle,
-  .blur-toggle-btn,
-  .sync-btn {
-    min-width: 44px;
-    min-height: 44px;
-  }
-
-  .connection-status {
-    max-width: none;
-    padding-left: 1px;
-    font-size: 10px;
-  }
-
-  .connection-status span {
-    display: none;
-  }
-
-  .connection-status::after {
-    content: "连接中";
-  }
-
-  .connection-status.is-connected::after {
-    content: "已连接";
-  }
-
-  .connection-status.is-disconnected::after {
-    content: "未连接";
-  }
-
-  .connection-status::before {
-    width: 6px;
-    height: 6px;
-    flex-basis: 6px;
-  }
-
-  .blur-toggle-btn,
-  .sync-btn {
-    padding: 0 6px;
-    font-size: 12px;
-  }
-
   .filter-info {
     align-items: flex-start;
     flex-wrap: wrap;
@@ -1085,12 +783,7 @@
   .more-tags-toggle:hover,
   .flag-item:hover,
   .tag-row:hover,
-  .deck-item:hover,
-  .menu-btn:hover,
-  .search-toggle:hover,
-  .search-close:hover,
-  .blur-toggle-btn:hover,
-  .sync-btn:hover {
+  .deck-item:hover {
     background: transparent;
   }
 }

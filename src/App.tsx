@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AnkiConnect } from './api/ankiConnect';
-import { Composer } from './features/composer';
+import { NewNoteDialog } from './features/composer';
 import {
   Sidebar,
   TopBar,
@@ -11,6 +11,7 @@ import {
 } from './features/navigation';
 import { EditModal, NoteStream, useNotes, type Toast } from './features/notes';
 import { ReviewOverview, type ReviewDateSelection } from './features/review';
+import styles from './App.module.css';
 
 const client = new AnkiConnect();
 
@@ -31,6 +32,7 @@ export default function App() {
   const [filter, setFilter] = useState<NavigationFilter | null>(null);
   const [selectedReviewDate, setSelectedReviewDate] = useState<string | null>(null);
   const [editingNoteId, setEditingNoteId] = useState<number | null>(null);
+  const [composerOpen, setComposerOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [answersHidden, setAnswersHidden] = useState(initialBlurState);
   const [connectionState, setConnectionState] = useState<ConnectionState>('checking');
@@ -170,8 +172,6 @@ export default function App() {
 
         <div className="content-area" id="contentArea">
           <div className="content-column">
-            <Composer client={client} allTags={tags} onCreated={refreshAfterWrite} onToast={showToast} />
-
             {filter && (
               <div className="filter-info" id="filterInfo">
                 <span className="filter-dot" aria-hidden="true" />
@@ -195,6 +195,11 @@ export default function App() {
             />
           </div>
         </div>
+
+        <button className={styles.newNoteButton} type="button" aria-haspopup="dialog" onClick={() => setComposerOpen(true)}>
+          <svg viewBox="0 0 18 18" width="18" height="18" aria-hidden="true" focusable="false"><path d="M9 2v14M2 9h14" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.7" /></svg>
+          <span>新建笔记</span>
+        </button>
       </main>
 
       <button
@@ -211,6 +216,15 @@ export default function App() {
         allTags={tags}
         onClose={() => setEditingNoteId(null)}
         onUpdated={refreshAfterWrite}
+        onToast={showToast}
+      />
+
+      <NewNoteDialog
+        open={composerOpen}
+        onOpenChange={setComposerOpen}
+        client={client}
+        allTags={tags}
+        onCreated={refreshAfterWrite}
         onToast={showToast}
       />
 
