@@ -8,7 +8,7 @@ import {
   suspendMemoNote,
   type NoteMode
 } from '../../domain/noteWriting';
-import { TagInput } from '../navigation/TagInput';
+import { TagInput } from '../../ui';
 
 export { MEMO_MODEL, QA_MODEL, suspendMemoNote, type NoteMode } from '../../domain/noteWriting';
 

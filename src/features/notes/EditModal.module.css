@@ -1,0 +1,241 @@
+.overlay {
+  position: fixed;
+  z-index: 50;
+  inset: 0;
+  background: color-mix(in srgb, var(--color-text-primary) 22%, transparent);
+}
+
+.viewport {
+  position: fixed;
+  z-index: 51;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow: auto;
+  padding: 24px;
+}
+
+.modal {
+  width: min(100%, 620px);
+  max-height: min(760px, calc(100vh - 48px));
+  overflow: auto;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 0;
+  background: var(--color-surface-raised);
+  box-shadow: 0 8px 22px color-mix(in srgb, var(--color-text-primary) 12%, transparent);
+}
+
+.header {
+  display: flex;
+  min-height: 62px;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 22px 14px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.headerTitle {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 5px;
+  color: var(--color-text-muted);
+  font-size: 10px;
+  text-align: right;
+}
+
+.metaChip {
+  padding: 2px 5px;
+  color: var(--color-text-muted);
+  font-size: 10px;
+}
+
+.body {
+  padding: 20px 22px 4px;
+}
+
+.loading {
+  min-height: 90px;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.fieldGroup {
+  margin-bottom: 18px;
+}
+
+.fieldGroup:last-child {
+  margin-bottom: 0;
+}
+
+.fieldLabel {
+  display: block;
+  margin-bottom: 7px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: .04em;
+}
+
+.fieldTextarea,
+.tags.tags input {
+  display: block;
+  width: 100%;
+  padding: 10px 11px;
+  border: 1px solid var(--color-border-strong);
+  outline: 0;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.fieldTextarea {
+  min-height: 116px;
+}
+
+.fieldTextarea:focus,
+.tags.tags input:focus {
+  border-color: var(--color-action);
+  background: var(--color-surface-raised);
+}
+
+.tags {
+  padding: 17px 22px 4px;
+}
+
+.tagsLabel {
+  display: block;
+  margin-bottom: 7px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.tagsHint {
+  color: var(--color-text-faint);
+  font-weight: 400;
+}
+
+.tags.tags input {
+  min-height: 42px;
+  font-size: 12px;
+}
+
+.tags :global(.tag-suggestions) {
+  position: static;
+  max-height: 180px;
+  margin-top: 4px;
+}
+
+.actions {
+  display: flex;
+  min-height: 78px;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 18px 22px;
+  border-top: 1px solid var(--color-border);
+}
+
+.cancel,
+.save {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 15px;
+  appearance: none;
+  font-size: 12px;
+}
+
+.cancel {
+  min-width: 72px;
+  background: transparent;
+  color: var(--color-text-muted);
+}
+
+.cancel:hover {
+  background: var(--color-surface-rail);
+  color: var(--color-text-primary);
+}
+
+.save {
+  min-width: 92px;
+  padding: 9px 20px;
+  background: var(--color-action);
+  color: var(--color-surface-raised);
+  font-weight: 650;
+  transition: background var(--motion-transition), opacity var(--motion-transition);
+}
+
+.save:hover,
+.save:active {
+  background: var(--color-action-strong);
+}
+
+.save:disabled {
+  opacity: .52;
+}
+
+@media (max-width: 768px) {
+  .viewport {
+    padding: 18px;
+  }
+
+  .modal {
+    max-height: calc(100vh - 36px);
+  }
+}
+
+@media (max-width: 480px) {
+  .viewport {
+    align-items: end;
+    padding: 0;
+  }
+
+  .modal {
+    width: 100%;
+    max-height: 92vh;
+    border-right: 0;
+    border-bottom: 0;
+    border-left: 0;
+  }
+
+  .header,
+  .body,
+  .tags,
+  .actions {
+    padding-right: 16px;
+    padding-left: 16px;
+  }
+
+  .header {
+    min-height: 58px;
+    padding-top: 16px;
+    padding-bottom: 12px;
+  }
+
+  .actions {
+    min-height: 76px;
+  }
+
+  .cancel,
+  .save {
+    flex: 1 1 0;
+  }
+}
+
+@media (hover: none) {
+  .cancel:hover {
+    background: transparent;
+  }
+}

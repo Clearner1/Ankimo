@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { ChangeEvent, KeyboardEvent } from 'react';
-import { filterTagPaths } from './TagTree';
+import { filterTagPaths } from '../domain/tags';
+import styles from './TagInput.module.css';
 
 export type TagInputProps = {
   id: string;
@@ -73,8 +74,9 @@ export function TagInput({ id, value, allTags, disabled, placeholder, ariaLabel 
   };
 
   return (
-    <div className="tag-autocomplete">
+    <div className={`tag-autocomplete ${styles.tagAutocomplete}`}>
       <input
+        className={styles.input}
         id={id}
         value={value}
         disabled={disabled}
@@ -92,10 +94,10 @@ export function TagInput({ id, value, allTags, disabled, placeholder, ariaLabel 
         onKeyDown={handleKeyDown}
       />
       {visible && (
-        <div className="tag-suggestions" id={listId} role="listbox" aria-label="标签建议">
+        <div className={`tag-suggestions ${styles.suggestions}`} id={listId} role="listbox" aria-label="标签建议">
           {suggestions.map((tag, index) => (
             <button
-              className={`tag-suggestion${index === activeIndex ? ' is-active' : ''}`}
+              className={`tag-suggestion${index === activeIndex ? ' is-active' : ''} ${styles.suggestion}${index === activeIndex ? ` ${styles.suggestionActive}` : ''}`}
               id={`${listId}-${index}`}
               key={tag}
               type="button"
