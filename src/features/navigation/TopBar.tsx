@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { ChangeEvent, KeyboardEvent } from 'react';
+import type { ChangeEvent, KeyboardEvent, MouseEvent } from 'react';
+import styles from './TopBar.module.css';
 
 export type ConnectionState = 'checking' | 'connected' | 'disconnected';
 export type SyncState = 'idle' | 'busy' | 'success' | 'error';
@@ -19,10 +20,28 @@ export type TopBarProps = {
 const connectionMessages: Record<ConnectionState, string> = {
   checking: '正在检查本地 Anki',
   connected: '已连接本地 Anki',
-  disconnected: '无法连接本地 AnkiConnect。请打开 Anki 并检查 AnkiConnect 后重试。'
+  disconnected: '未连接本地 Anki'
 };
 
-const syncStateClasses = ['sync-busy', 'sync-success', 'sync-error', 'status-busy', 'status-success', 'status-error', 'is-busy', 'is-success', 'is-error'];
+const shortConnectionMessages: Record<ConnectionState, string> = {
+  checking: '连接中',
+  connected: '已连接',
+  disconnected: '未连接'
+};
+
+const syncStateClasses: Record<SyncState, string> = {
+  idle: '',
+  busy: 'sync-busy status-busy is-busy',
+  success: 'sync-success status-success is-success',
+  error: 'sync-error status-error is-error'
+};
+
+const syncStateStyles: Record<SyncState, string> = {
+  idle: '',
+  busy: styles.busy,
+  success: styles.success,
+  error: styles.error
+};
 
 export function TopBar({ menuOpen, connectionState, syncState, answersHidden, onMenuToggle, onSearch, onToggleAnswers, onSync, connectionMessage }: TopBarProps) {
   const [search, setSearch] = useState('');
@@ -53,6 +72,10 @@ export function TopBar({ menuOpen, connectionState, syncState, answersHidden, on
     }
   };
 
+  const closeUtilities = (event: MouseEvent<HTMLButtonElement>) => {
+    event.currentTarget.closest('details')?.removeAttribute('open');
+  };
+
   useEffect(() => () => {
     if (searchTimer.current) clearTimeout(searchTimer.current);
   }, []);
@@ -73,23 +96,44 @@ export function TopBar({ menuOpen, connectionState, syncState, answersHidden, on
   }, []);
 
   return (
-    <header className="top-bar">
-      <button className="menu-btn" id="menuBtn" type="button" aria-label={menuOpen ? '关闭侧栏' : '打开侧栏'} aria-controls="sidebar" aria-expanded={menuOpen} onClick={onMenuToggle}>
-        <svg viewBox="0 0 16 12" width="16" height="12" aria-hidden="true" focusable="false"><path d="M1 1h14M1 6h14M1 11h14" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.5" /></svg>
+    <header className={`top-bar ${styles.bar} ${searchExpanded ? styles.searching : ''}`}>
+      <button className={`menu-btn ${styles.iconButton} ${styles.menuButton}`} id="menuBtn" type="button" aria-label={menuOpen ? '关闭侧栏' : '打开侧栏'} aria-controls="sidebar" aria-expanded={menuOpen} onClick={onMenuToggle}>
+        <svg viewBox="0 0 18 14" width="18" height="14" aria-hidden="true" focusable="false"><path d="M1 1h16M1 7h16M1 13h16" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.5" /></svg>
       </button>
-      <button className="search-toggle" id="searchToggle" type="button" aria-label="打开搜索" aria-controls="searchBox" aria-expanded={searchExpanded} onClick={() => setSearchExpanded(true)}>搜索</button>
-      <div className={`search-box${searchExpanded ? ' expanded' : ''}`} id="searchBox">
-        <span className="search-icon" aria-hidden="true" />
-        <input ref={searchInputRef} type="text" id="searchInput" placeholder="搜索笔记... 支持 Anki 搜索语法" aria-label="搜索笔记" value={search} onChange={onSearchChange} onKeyDown={onSearchKeyDown} />
-        <button className="search-close" id="searchClose" type="button" aria-label="关闭搜索" onClick={() => setSearchExpanded(false)}>
+
+      <span className={styles.brand} aria-hidden="true">ankimo</span>
+
+      <div className={`search-box ${styles.searchBox} ${searchExpanded ? `expanded ${styles.searchBoxExpanded}` : ''}`} id="searchBox">
+        <span className={styles.searchIcon} aria-hidden="true" />
+        <input ref={searchInputRef} type="text" id="searchInput" placeholder="搜索笔记… 支持 Anki 搜索语法" aria-label="搜索笔记" value={search} onChange={onSearchChange} onKeyDown={onSearchKeyDown} />
+        <button className={`search-close ${styles.iconButton} ${styles.searchClose}`} id="searchClose" type="button" aria-label="关闭搜索" onClick={() => setSearchExpanded(false)}>
           <svg viewBox="0 0 14 14" width="14" height="14" aria-hidden="true" focusable="false"><path d="M2 2l10 10M12 2L2 12" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.5" /></svg>
         </button>
       </div>
-      <div className={`connection-status ${connectionState} status-${connectionState} is-${connectionState}`} id="connectionStatus" data-state={connectionState} role="status" aria-live="polite" aria-label={`AnkiConnect 连接状态：${message}`}>
-        <span id="connectionStatusText">{message}</span>
+
+      <div className={`connection-status ${connectionState} status-${connectionState} is-${connectionState} ${styles.connection} ${styles[connectionState]}`} id="connectionStatus" data-state={connectionState} role="status" aria-live="polite" aria-label={`AnkiConnect 连接状态：${message}`}>
+        <span className={styles.connectionLong} id="connectionStatusText">{message}</span>
+        <span className={styles.connectionShort} aria-hidden="true">{shortConnectionMessages[connectionState]}</span>
       </div>
-      <button className={`blur-toggle-btn${answersHidden ? ' active' : ''}`} id="blurToggleBtn" type="button" title="切换答案显示" aria-pressed={!answersHidden} onClick={onToggleAnswers}>{answersHidden ? '隐藏答案' : '显示答案'}</button>
-      <button className={`sync-btn ${syncStateClasses.includes(`sync-${syncState}`) ? `sync-${syncState} status-${syncState} is-${syncState}` : ''}`.trim()} id="syncBtn" type="button" title="同步 Anki" aria-busy={syncState === 'busy'} disabled={syncState === 'busy'} onClick={() => { void onSync(); }}>同步</button>
+
+      <button className={`search-toggle ${styles.iconButton} ${styles.searchToggle}`} id="searchToggle" type="button" aria-label="打开搜索" aria-controls="searchBox" aria-expanded={searchExpanded} onClick={() => setSearchExpanded(true)}>
+        <svg viewBox="0 0 18 18" width="18" height="18" aria-hidden="true" focusable="false"><circle cx="8" cy="8" r="5.75" fill="none" stroke="currentColor" strokeWidth="1.5" /><path d="m12.2 12.2 4 4" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.5" /></svg>
+      </button>
+
+      <div className={styles.desktopActions}>
+        <button className={`blur-toggle-btn ${styles.actionButton} ${answersHidden ? `active ${styles.active}` : ''}`} id="blurToggleBtn" type="button" title="切换答案显示" aria-pressed={!answersHidden} onClick={onToggleAnswers}>{answersHidden ? '隐藏答案' : '显示答案'}</button>
+        <button className={`sync-btn ${syncStateClasses[syncState]} ${styles.actionButton} ${syncStateStyles[syncState]}`.trim()} id="syncBtn" type="button" title="同步 Anki" aria-busy={syncState === 'busy'} disabled={syncState === 'busy'} onClick={() => { void onSync(); }}>同步</button>
+      </div>
+
+      <details className={styles.utilityMenu}>
+        <summary className={`${styles.iconButton} ${styles.utilityTrigger}`} aria-label="更多操作">
+          <svg viewBox="0 0 20 4" width="20" height="4" aria-hidden="true" focusable="false"><circle cx="2" cy="2" r="1.5" fill="currentColor" /><circle cx="10" cy="2" r="1.5" fill="currentColor" /><circle cx="18" cy="2" r="1.5" fill="currentColor" /></svg>
+        </summary>
+        <div className={styles.utilityPanel}>
+          <button type="button" aria-pressed={!answersHidden} onClick={event => { closeUtilities(event); onToggleAnswers(); }}>{answersHidden ? '显示全部答案' : '隐藏全部答案'}</button>
+          <button type="button" aria-busy={syncState === 'busy'} disabled={syncState === 'busy'} onClick={event => { closeUtilities(event); void onSync(); }}>{syncState === 'busy' ? '同步中…' : '同步 Anki'}</button>
+        </div>
+      </details>
     </header>
   );
 }

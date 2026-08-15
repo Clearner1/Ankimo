@@ -1,0 +1,339 @@
+.bar {
+  position: sticky;
+  z-index: 20;
+  top: 0;
+  display: flex;
+  min-height: 64px;
+  align-items: center;
+  gap: 12px;
+  padding: 10px max(30px, env(safe-area-inset-right)) 10px max(30px, env(safe-area-inset-left));
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-background);
+}
+
+.brand {
+  display: none;
+  color: var(--color-text-primary);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -.04em;
+}
+
+.iconButton,
+.actionButton {
+  display: inline-flex;
+  min-width: var(--size-touch-target);
+  min-height: var(--size-touch-target);
+  align-items: center;
+  justify-content: center;
+  appearance: none;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--color-text-secondary);
+  transition: background var(--motion-transition), color var(--motion-transition), border-color var(--motion-transition);
+}
+
+.iconButton:hover,
+.actionButton:hover {
+  background: var(--color-action-wash);
+  color: var(--color-text-primary);
+}
+
+.menuButton,
+.searchToggle,
+.utilityMenu {
+  display: none;
+}
+
+.searchBox {
+  position: relative;
+  display: flex;
+  width: min(100%, 720px);
+  min-height: var(--size-touch-target);
+  align-items: center;
+  overflow: hidden;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-control);
+  background: var(--color-surface-raised);
+  transition: border-color var(--motion-transition), background var(--motion-transition);
+}
+
+.searchBox:focus-within {
+  border-color: var(--color-action);
+}
+
+.searchIcon {
+  position: relative;
+  display: block;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  margin-left: 13px;
+  border: 1.5px solid var(--color-text-muted);
+  border-radius: 50%;
+}
+
+.searchIcon::after {
+  position: absolute;
+  right: -4px;
+  bottom: -3px;
+  width: 6px;
+  height: 1.5px;
+  background: var(--color-text-muted);
+  content: "";
+  transform: rotate(45deg);
+  transform-origin: left center;
+}
+
+.searchBox input {
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  padding: 7px 12px 7px 13px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--color-text-primary);
+  font-size: 14px;
+}
+
+.searchBox input::placeholder {
+  color: var(--color-text-faint);
+}
+
+.searchClose {
+  display: none;
+  width: var(--size-touch-target);
+  flex: 0 0 var(--size-touch-target);
+  border-left: 1px solid var(--color-border);
+  border-radius: 0;
+}
+
+.searchBoxExpanded .searchClose {
+  display: inline-flex;
+}
+
+.connection {
+  position: relative;
+  display: inline-flex;
+  min-height: var(--size-touch-target);
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  padding: 0 2px 0 4px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.connection::before {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border: 1px solid var(--color-text-faint);
+  border-radius: 50%;
+  background: var(--color-text-faint);
+  content: "";
+}
+
+.checking::before {
+  border-color: var(--color-flag-orange);
+  background: var(--color-flag-orange);
+}
+
+.connected::before {
+  border-color: var(--color-success);
+  background: var(--color-success);
+}
+
+.disconnected {
+  color: var(--color-danger);
+}
+
+.disconnected::before {
+  border-color: var(--color-danger);
+  background: transparent;
+}
+
+.connectionShort {
+  display: none;
+}
+
+.desktopActions {
+  display: flex;
+  gap: 8px;
+}
+
+.actionButton {
+  padding: 0 12px;
+  border: 1px solid var(--color-border-strong);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.active,
+.success {
+  border-color: var(--color-action);
+  background: var(--color-action-soft);
+  color: var(--color-action-strong);
+}
+
+.busy {
+  background: var(--color-surface-rail);
+  color: var(--color-text-muted);
+}
+
+.error {
+  border-color: var(--color-danger);
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+}
+
+.actionButton:disabled {
+  opacity: .7;
+}
+
+.utilityMenu {
+  position: relative;
+}
+
+.utilityTrigger {
+  list-style: none;
+  cursor: pointer;
+}
+
+.utilityTrigger::-webkit-details-marker {
+  display: none;
+}
+
+.utilityPanel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  display: grid;
+  min-width: 168px;
+  padding: 5px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-control);
+  background: var(--color-surface-raised);
+  box-shadow: 0 12px 30px color-mix(in srgb, var(--color-text-primary) 12%, transparent);
+}
+
+.utilityPanel button {
+  min-height: var(--size-touch-target);
+  padding: 8px 11px;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  text-align: left;
+}
+
+.utilityPanel button:hover {
+  background: var(--color-action-wash);
+  color: var(--color-text-primary);
+}
+
+.utilityPanel button:disabled {
+  color: var(--color-text-faint);
+}
+
+@media (max-width: 768px) {
+  .bar {
+    min-height: calc(60px + env(safe-area-inset-top));
+    gap: 8px;
+    padding: calc(8px + env(safe-area-inset-top)) max(18px, env(safe-area-inset-right)) 8px max(18px, env(safe-area-inset-left));
+  }
+
+  .menuButton,
+  .searchToggle {
+    display: inline-flex;
+    flex: 0 0 var(--size-touch-target);
+  }
+
+  .brand {
+    display: inline;
+  }
+
+  .searchBox {
+    display: none;
+    flex: 1 1 auto;
+  }
+
+  .searchBoxExpanded {
+    display: flex;
+    width: auto;
+  }
+
+  .desktopActions {
+    display: none;
+  }
+
+  .connection {
+    max-width: 88px;
+    margin-left: auto;
+    overflow: hidden;
+  }
+
+  .connectionLong {
+    display: none;
+  }
+
+  .connectionShort {
+    display: inline;
+  }
+
+  .utilityMenu {
+    display: block;
+    flex: 0 0 var(--size-touch-target);
+  }
+
+  .searching .brand,
+  .searching .connection,
+  .searching .searchToggle,
+  .searching .utilityMenu {
+    display: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .bar {
+    gap: 4px;
+    padding-right: max(10px, env(safe-area-inset-right));
+    padding-left: max(10px, env(safe-area-inset-left));
+  }
+
+  .brand {
+    font-size: 18px;
+  }
+
+  .connection {
+    max-width: 72px;
+    gap: 6px;
+    padding: 0;
+    font-size: 10px;
+  }
+
+  .connection::before {
+    width: 6px;
+    height: 6px;
+    flex-basis: 6px;
+  }
+}
+
+@media (hover: none) {
+  .iconButton:hover,
+  .actionButton:hover,
+  .utilityPanel button:hover {
+    background: transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .iconButton,
+  .actionButton,
+  .searchBox {
+    transition: none;
+  }
+}
