@@ -1,11 +1,12 @@
 .main-content {
   min-height: 100vh;
+  min-height: 100dvh;
   margin-left: var(--layout-sidebar-width);
-  background: var(--color-surface);
+  background: var(--color-background);
 }
 
 .content-area {
-  padding: 0 30px 76px;
+  padding: env(safe-area-inset-top) max(30px, env(safe-area-inset-right)) calc(76px + env(safe-area-inset-bottom)) max(30px, env(safe-area-inset-left));
 }
 
 .content-column {
@@ -20,12 +21,13 @@
   }
 
   .content-area {
-    padding: 0 18px 60px;
+    padding: env(safe-area-inset-top) max(18px, env(safe-area-inset-right)) calc(60px + env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left));
   }
 }
 
 @media (max-width: 480px) {
   .content-area {
-    padding: 0 14px 48px;
+    padding-inline: max(14px, env(safe-area-inset-left)) max(14px, env(safe-area-inset-right));
+    padding-bottom: calc(48px + env(safe-area-inset-bottom));
   }
 }
