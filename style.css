@@ -1,111 +1,6 @@
-:root {
-  --paper: #fffdfa;
-  --paper-strong: #ffffff;
-  --rail: #f4f6f2;
-  --rail-deep: #edf1ed;
-  --graphite: #26302b;
-  --graphite-soft: #39443e;
-  --muted: #66736c;
-  --faint: #6b766f;
-  --line: #dfe5df;
-  --line-strong: #c7d1ca;
-  --green: #246b4a;
-  --green-dark: #1b573b;
-  --green-soft: #e7f1e9;
-  --green-wash: #f1f7f2;
-  --danger: #a63d3d;
-  --danger-soft: #fbf1f1;
-  --flag-red: #c44444;
-  --flag-orange: #bd741d;
-  --flag-green: #388254;
-  --sidebar-width: 248px;
-  --content-max: 1080px;
-  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-  --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  --focus: #176d49;
-  --transition: 160ms ease;
-}
-
-* {
-  box-sizing: border-box;
-}
-
-html {
-  min-width: 320px;
-  background: var(--paper);
-  color: var(--graphite);
-  scroll-behavior: smooth;
-}
-
-body {
-  min-width: 320px;
-  min-height: 100vh;
-  margin: 0;
-  background: var(--paper);
-  color: var(--graphite);
-  font-family: var(--font);
-  font-size: 14px;
-  line-height: 1.55;
-  -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
-}
-
-button,
-input,
-textarea,
-select {
-  color: inherit;
-  font: inherit;
-}
-
-button,
-select,
-input[type="radio"],
-input[type="checkbox"] {
-  cursor: pointer;
-}
-
-button:disabled,
-select:disabled,
-input:disabled,
-textarea:disabled {
-  cursor: not-allowed;
-}
-
-button {
-  border: 0;
-}
-
-input,
-textarea,
-select {
-  border-radius: 0;
-}
-
-textarea {
-  resize: vertical;
-}
-
-::selection {
-  background: var(--green-soft);
-  color: var(--graphite);
-}
-
-:focus-visible {
-  outline: 3px solid color-mix(in srgb, var(--focus) 32%, transparent);
-  outline-offset: 2px;
-}
-
-.visually-hidden {
-  position: absolute !important;
-  width: 1px !important;
-  height: 1px !important;
-  padding: 0 !important;
-  overflow: hidden !important;
-  clip: rect(0, 0, 0, 0) !important;
-  white-space: nowrap !important;
-  border: 0 !important;
-}
+@import "./src/styles/tokens.css";
+@import "./src/styles/base.css";
+@import "./src/styles/app-shell.css";
 
 /* Rail */
 
@@ -739,12 +634,6 @@ textarea {
 
 /* Utility bar */
 
-.main-content {
-  min-height: 100vh;
-  margin-left: var(--sidebar-width);
-  background: var(--paper);
-}
-
 .top-bar {
   position: sticky;
   z-index: 20;
@@ -931,16 +820,6 @@ textarea {
 }
 
 /* Composer */
-
-.content-area {
-  padding: 0 30px 76px;
-}
-
-.content-column {
-  width: 100%;
-  max-width: var(--content-max);
-  margin: 0 auto;
-}
 
 .input-card {
   position: relative;
@@ -1942,10 +1821,6 @@ textarea {
     display: block;
   }
 
-  .main-content {
-    margin-left: 0;
-  }
-
   .menu-btn {
     display: inline-flex;
     width: 44px;
@@ -2012,10 +1887,6 @@ textarea {
   .sync-btn {
     min-width: 44px;
     padding: 0 8px;
-  }
-
-  .content-area {
-    padding: 0 18px 60px;
   }
 
   .input-card {
@@ -2143,10 +2014,6 @@ textarea {
   .sync-btn {
     padding: 0 6px;
     font-size: 12px;
-  }
-
-  .content-area {
-    padding: 0 14px 48px;
   }
 
   .composer-head h2 {
