@@ -1,0 +1,296 @@
+.card {
+  position: relative;
+  display: block;
+  padding: 22px 24px 24px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card, 14px);
+  background: var(--color-surface-raised);
+}
+
+.header {
+  position: relative;
+  display: flex;
+  min-height: 36px;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.time {
+  min-height: 28px;
+  color: var(--color-text-faint);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.actions {
+  position: relative;
+  z-index: 1;
+  margin-left: auto;
+}
+
+.actionTrigger {
+  display: inline-flex;
+  min-width: 44px;
+  min-height: 36px;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 9px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  list-style: none;
+}
+
+.actionTrigger::-webkit-details-marker {
+  display: none;
+}
+
+.actionTrigger:hover,
+.actions[open] > .actionTrigger {
+  border-color: var(--color-border);
+  background: var(--color-surface-rail);
+  color: var(--color-text-primary);
+}
+
+.actionMenu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  display: grid;
+  min-width: 112px;
+  padding: 4px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 10px;
+  background: var(--color-surface-raised);
+}
+
+.actionButton {
+  min-height: 40px;
+  padding: 8px 10px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  text-align: left;
+}
+
+.actionButton:hover {
+  background: var(--color-surface-rail);
+  color: var(--color-text-primary);
+}
+
+.deleteButton:hover {
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+}
+
+.field {
+  display: block;
+  margin: 0 0 22px;
+}
+
+.field:last-child {
+  margin-bottom: 0;
+}
+
+.answerField {
+  padding-top: 18px;
+  border-top: 1px solid var(--color-border);
+}
+
+.fieldLabel {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: .06em;
+  line-height: 1.4;
+}
+
+.fieldContent {
+  overflow-wrap: anywhere;
+  color: var(--color-text-primary);
+  font-size: 15px;
+  line-height: 1.8;
+}
+
+.fieldContent p:first-child {
+  margin-top: 0;
+}
+
+.fieldContent p:last-child {
+  margin-bottom: 0;
+}
+
+.fieldContent img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 14px 0;
+}
+
+.blurred {
+  position: relative;
+  min-height: 48px;
+  max-height: 74px;
+  overflow: hidden;
+  padding: 12px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-action-wash);
+  color: transparent;
+  cursor: pointer;
+  user-select: none;
+}
+
+.blurred:hover,
+.blurred:focus-visible {
+  border-color: var(--color-border-strong);
+  background: var(--color-action-soft);
+}
+
+.blurred::after {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
+  content: "点击显示答案";
+  font-size: 12px;
+  font-weight: 600;
+  user-select: none;
+}
+
+.blurred:hover::after,
+.blurred:focus-visible::after {
+  color: var(--color-text-primary);
+  content: "显示答案";
+}
+
+.revealed {
+  padding: 12px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-surface-rail);
+  color: var(--color-text-primary);
+  cursor: default;
+  user-select: text;
+}
+
+.revealed::after {
+  display: none;
+}
+
+.meta {
+  display: flex;
+  min-height: 28px;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
+
+.tag {
+  display: inline-flex;
+  min-height: 24px;
+  align-items: center;
+  padding: 2px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface-rail);
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  line-height: 1.2;
+  transition: border-color var(--motion-transition), background var(--motion-transition);
+}
+
+.tag:hover,
+.tag:focus-visible {
+  border-color: var(--color-border-strong);
+  background: var(--color-surface-rail-deep);
+}
+
+.status {
+  padding: 3px 7px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
+
+.model {
+  color: var(--color-text-faint);
+  font-size: 11px;
+}
+
+.memo {
+  position: relative;
+}
+
+.memoBody {
+  overflow-wrap: anywhere;
+}
+
+.memoBodyCollapsed {
+  position: relative;
+  max-height: 13rem;
+  overflow: hidden;
+  mask-image: linear-gradient(to bottom, black calc(100% - 28px), transparent 100%);
+}
+
+.memoToggle {
+  min-height: 32px;
+  margin-top: 6px;
+  padding: 4px 0;
+  background: transparent;
+  color: var(--color-action-strong);
+  font-size: 12px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.memoToggle:hover {
+  color: var(--color-text-primary);
+}
+
+@media (max-width: 768px) {
+  .card {
+    padding: 20px;
+  }
+
+  .fieldContent {
+    font-size: 14px;
+    line-height: 1.75;
+  }
+}
+
+@media (max-width: 480px) {
+  .card {
+    padding: 18px 16px 20px;
+  }
+
+  .header {
+    margin-bottom: 18px;
+  }
+
+  .meta {
+    align-items: flex-start;
+  }
+}
+
+@media (hover: none) {
+  .actionTrigger:hover,
+  .actionButton:hover,
+  .tag:hover,
+  .memoToggle:hover {
+    background: transparent;
+    color: inherit;
+  }
+}
