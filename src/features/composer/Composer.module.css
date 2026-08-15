@@ -1,0 +1,445 @@
+.inputCard {
+  position: relative;
+  margin: 0 0 25px;
+  padding: 31px 0 0;
+  border-bottom: 1px solid var(--color-border-strong);
+  background: transparent;
+}
+
+.inputCard:focus-within {
+  border-bottom-color: var(--color-action);
+}
+
+.composerHead {
+  display: flex;
+  min-height: 42px;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.composerHead h2 {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: 21px;
+  font-weight: 650;
+  letter-spacing: -.02em;
+  line-height: 1.25;
+}
+
+.composerHint {
+  max-width: 680px;
+  margin: 7px 0 22px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.modeSwitch {
+  display: inline-flex;
+  flex: 0 0 auto;
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface-raised);
+}
+
+.modeLabel {
+  display: inline-flex;
+  min-width: 92px;
+  min-height: var(--size-touch-target);
+  align-items: center;
+  justify-content: center;
+  padding: 7px 13px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  transition: background var(--motion-transition), color var(--motion-transition);
+}
+
+.modeLabel + .modeLabel {
+  border-left: 1px solid var(--color-border-strong);
+}
+
+.modeLabel:hover,
+.active {
+  background: var(--color-action-soft);
+  color: var(--color-text-primary);
+}
+
+.active {
+  background: var(--color-action);
+  color: var(--color-surface-raised);
+}
+
+#noteModeMemo:focus-visible ~ .composerHead .modeLabel[for="noteModeMemo"],
+#noteModeQa:focus-visible ~ .composerHead .modeLabel[for="noteModeQa"] {
+  outline: 3px solid color-mix(in srgb, var(--color-focus) 32%, transparent);
+  outline-offset: 2px;
+}
+
+.composerFields {
+  display: block;
+}
+
+.textarea {
+  display: block;
+  width: 100%;
+  min-height: 130px;
+  padding: 15px 0 13px;
+  border: 0;
+  border-top: 1px solid var(--color-border);
+  outline: 0;
+  background: transparent;
+  color: var(--color-text-primary);
+  font-size: 15px;
+  line-height: 1.75;
+  resize: vertical;
+}
+
+.textarea:focus {
+  border-top-color: var(--color-action);
+  outline: 3px solid color-mix(in srgb, var(--color-focus) 32%, transparent);
+  outline-offset: 2px;
+}
+
+.textarea::placeholder {
+  color: var(--color-text-faint);
+}
+
+.composerImages {
+  display: grid;
+  gap: 12px;
+  padding: 14px 0 4px;
+  border-top: 1px solid var(--color-border);
+}
+
+.imageDropzone {
+  display: flex;
+  min-height: 52px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 9px 12px;
+  border: 1px dashed var(--color-border-strong);
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1.4;
+  cursor: pointer;
+  transition: border-color var(--motion-transition), background var(--motion-transition), color var(--motion-transition);
+}
+
+.imageDropzone:hover {
+  border-color: var(--color-action);
+  background: var(--color-action-wash);
+  color: var(--color-text-primary);
+}
+
+#imageInput:disabled + .imageDropzone {
+  cursor: default;
+  opacity: .6;
+}
+
+#imageInput:focus-visible + .imageDropzone {
+  outline: 3px solid color-mix(in srgb, var(--color-focus) 32%, transparent);
+  outline-offset: 2px;
+}
+
+.imageDropzone small {
+  color: var(--color-text-faint);
+  font-size: 10px;
+}
+
+.imagePreviews {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 10px;
+}
+
+.imagePreview {
+  position: relative;
+  min-width: 0;
+  aspect-ratio: 4 / 3;
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-raised);
+}
+
+.imagePreviewImage {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.imageRemove {
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
+  min-width: var(--size-touch-target);
+  min-height: var(--size-touch-target);
+  padding: 4px 7px;
+  border: 0;
+  background: color-mix(in srgb, var(--color-text-primary) 82%, transparent);
+  color: var(--color-surface-raised);
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.imageRemove:hover {
+  background: var(--color-danger);
+}
+
+.imageRemove:disabled {
+  cursor: default;
+  opacity: .55;
+}
+
+.qaMode .composerFields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 24px;
+}
+
+.memoMode .composerFields #backInput {
+  display: none;
+}
+
+.qaMode .composerFields #backInput {
+  display: block;
+  border-left: 1px solid var(--color-border);
+  padding-left: 24px;
+}
+
+.composerFooter {
+  display: flex;
+  min-height: 72px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 12px 0 17px;
+}
+
+.tagInputWrap {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: center;
+}
+
+.composerActions {
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  gap: 12px;
+}
+
+.advancedToggle {
+  display: inline-flex;
+  min-height: var(--size-touch-target);
+  align-items: center;
+  gap: 7px;
+  padding: 8px 4px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  transition: color var(--motion-transition);
+}
+
+.advancedToggle:hover {
+  color: var(--color-text-primary);
+}
+
+.advancedChevron {
+  display: inline-flex;
+  color: currentColor;
+  transition: transform var(--motion-transition);
+}
+
+.advancedToggleInput:checked ~ .composerFooter .advancedChevron {
+  transform: rotate(180deg);
+}
+
+.advancedToggleInput:focus-visible ~ .composerFooter .advancedToggle {
+  outline: 3px solid color-mix(in srgb, var(--color-focus) 32%, transparent);
+  outline-offset: 2px;
+}
+
+.advancedControls {
+  display: none;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 24px;
+  padding: 15px 0 25px;
+  border-top: 1px solid var(--color-border);
+}
+
+.advancedToggleInput:checked ~ .advancedControls {
+  display: grid;
+}
+
+.controlField {
+  display: grid;
+  gap: 7px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.select {
+  width: 100%;
+  min-height: var(--size-touch-target);
+  padding: 7px 10px;
+  border: 1px solid var(--color-border-strong);
+  outline: 0;
+  background: var(--color-surface-raised);
+  color: var(--color-text-primary);
+  font-size: 12px;
+}
+
+.select:focus {
+  border-color: var(--color-action);
+  outline: 3px solid color-mix(in srgb, var(--color-focus) 32%, transparent);
+  outline-offset: 2px;
+}
+
+.saveBtn {
+  display: inline-flex;
+  min-width: 92px;
+  min-height: var(--size-touch-target);
+  align-items: center;
+  justify-content: center;
+  padding: 9px 20px;
+  border: 0;
+  background: var(--color-action);
+  color: var(--color-surface-raised);
+  font-size: 12px;
+  font-weight: 650;
+  transition: background var(--motion-transition), opacity var(--motion-transition);
+}
+
+.saveBtn:hover,
+.saveBtn:active {
+  background: var(--color-action-strong);
+}
+
+.saveBtn:disabled {
+  opacity: .52;
+}
+
+@media (max-width: 768px) {
+  .inputCard {
+    padding-top: 26px;
+  }
+
+  .composerHead {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .modeSwitch {
+    align-self: flex-start;
+  }
+
+  .composerHint {
+    margin-bottom: 17px;
+  }
+
+  .textarea {
+    min-height: 116px;
+    font-size: 15px;
+  }
+
+  .qaMode .composerFields {
+    display: block;
+  }
+
+  .qaMode .composerFields #backInput {
+    margin-top: 16px;
+    border-top: 1px solid var(--color-border);
+    border-left: 0;
+    padding-left: 0;
+  }
+
+  .composerFooter {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+    padding-top: 12px;
+  }
+
+  .composerActions {
+    justify-content: flex-end;
+  }
+
+  .advancedControls {
+    gap: 14px;
+  }
+}
+
+@media (max-width: 480px) {
+  .composerHead h2 {
+    font-size: 21px;
+  }
+
+  .modeSwitch {
+    width: 100%;
+  }
+
+  .modeLabel {
+    width: 50%;
+    min-width: 0;
+  }
+
+  .composerHint {
+    margin-top: 8px;
+    font-size: 12px;
+  }
+
+  .textarea {
+    min-height: 104px;
+    padding-top: 12px;
+    padding-bottom: 11px;
+    font-size: 14px;
+  }
+
+  .composerFooter {
+    min-height: 0;
+  }
+
+  .composerActions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .advancedToggle,
+  .saveBtn {
+    min-height: var(--size-touch-target);
+  }
+
+  .saveBtn {
+    flex: 1 1 auto;
+  }
+
+  .advancedControls {
+    grid-template-columns: 1fr;
+    gap: 13px;
+  }
+}
+
+@media (hover: none) {
+  .advancedToggle:hover {
+    color: var(--color-text-muted);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modeLabel,
+  .imageDropzone,
+  .advancedToggle,
+  .advancedChevron,
+  .saveBtn {
+    transition: none;
+  }
+}

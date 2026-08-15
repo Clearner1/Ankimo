@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import styles from './AiAccess.module.css';
 
 const AI_TOKEN_PATH = '/api/ai-tokens';
 const AI_CONNECTION_PATH = '/api/ai-connections';
@@ -167,16 +168,16 @@ export function AiAccess() {
   };
 
   return (
-    <section className="input-card" aria-labelledby="aiAccessTitle">
-      <div className="composer-head">
+    <section className={`input-card ${styles.inputCard}`} aria-labelledby="aiAccessTitle">
+      <div className={`composer-head ${styles.composerHead}`}>
         <h2 id="aiAccessTitle">AI 访问</h2>
       </div>
-      <p className="composer-hint">日常使用请选择长期密钥；不能安全保存密钥的 AI 仍使用一次性连接链接。</p>
-      <div className="composer-fields">
-        <label className="control-field" htmlFor="aiOpenApiUrl">
+      <p className={`composer-hint ${styles.composerHint}`}>日常使用请选择长期密钥；不能安全保存密钥的 AI 仍使用一次性连接链接。</p>
+      <div className={`composer-fields ${styles.composerFields}`}>
+        <label className={`control-field ${styles.controlField}`} htmlFor="aiOpenApiUrl">
           OpenAPI URL
-          <span className="tag-input-wrap">
-            <input id="aiOpenApiUrl" type="url" readOnly value={AI_OPENAPI_URL} />
+          <span className={`tag-input-wrap ${styles.tagInputWrap}`}>
+            <input className={styles.input} id="aiOpenApiUrl" type="url" readOnly value={AI_OPENAPI_URL} />
           </span>
         </label>
       </div>
@@ -186,52 +187,52 @@ export function AiAccess() {
       </div>
 
       {trustedToken && (
-        <div className="composer-fields">
-          <label className="control-field" htmlFor="aiTrustedToken">
+        <div className={`composer-fields ${styles.composerFields}`}>
+          <label className={`control-field ${styles.controlField}`} htmlFor="aiTrustedToken">
             可信 AI 长期密钥
-            <span className="tag-input-wrap">
-              <input id="aiTrustedToken" type="password" readOnly autoComplete="off" spellCheck={false} value={trustedToken.token} />
+            <span className={`tag-input-wrap ${styles.tagInputWrap}`}>
+              <input className={styles.input} id="aiTrustedToken" type="password" readOnly autoComplete="off" spellCheck={false} value={trustedToken.token} />
             </span>
           </label>
-          <p className="composer-hint">只在当前页面显示一次。请保存到 AI 平台的 Secret Store 或本机 Keychain，切勿发送到聊天。</p>
-          <p className="composer-hint">本机 Codex：复制后在终端运行 codex-secret save ankimo，并按隐藏提示保存。</p>
-          <div className="composer-footer">
-            <div className="tag-input-wrap" aria-hidden="true" />
-            <div className="composer-actions">
-              <button className="clear-filter" type="button" disabled={busy !== null} onClick={() => { void generateTrusted(); }}>重置长期密钥</button>
-              <button className="save-btn" type="button" disabled={busy !== null} onClick={() => { void copyValue(trustedToken.token, '长期密钥'); }}>复制长期密钥</button>
+          <p className={`composer-hint ${styles.composerHint}`}>只在当前页面显示一次。请保存到 AI 平台的 Secret Store 或本机 Keychain，切勿发送到聊天。</p>
+          <p className={`composer-hint ${styles.composerHint}`}>本机 Codex：复制后在终端运行 codex-secret save ankimo，并按隐藏提示保存。</p>
+          <div className={`composer-footer ${styles.composerFooter}`}>
+            <div className={`tag-input-wrap ${styles.tagInputWrap}`} aria-hidden="true" />
+            <div className={`composer-actions ${styles.composerActions}`}>
+              <button className={`clear-filter ${styles.secondaryButton}`} type="button" disabled={busy !== null} onClick={() => { void generateTrusted(); }}>重置长期密钥</button>
+              <button className={`save-btn ${styles.saveBtn}`} type="button" disabled={busy !== null} onClick={() => { void copyValue(trustedToken.token, '长期密钥'); }}>复制长期密钥</button>
             </div>
           </div>
         </div>
       )}
 
       {connection && (
-        <div className="composer-fields">
-          <label className="control-field" htmlFor="aiConnectionUrl">
+        <div className={`composer-fields ${styles.composerFields}`}>
+          <label className={`control-field ${styles.controlField}`} htmlFor="aiConnectionUrl">
             AI 连接链接
-            <span className="tag-input-wrap">
-              <input id="aiConnectionUrl" type="url" readOnly value={connection.connectUrl} />
+            <span className={`tag-input-wrap ${styles.tagInputWrap}`}>
+              <input className={styles.input} id="aiConnectionUrl" type="url" readOnly value={connection.connectUrl} />
             </span>
           </label>
-          <p className="composer-hint">只在当前页面显示，不写入浏览器存储或日志；只能兑换一次。</p>
-          <p className="composer-hint">请在 {connection.expiresAt} 前让 AI 访问并兑换。</p>
-          <div className="composer-footer">
-            <div className="tag-input-wrap" aria-hidden="true" />
-            <div className="composer-actions">
-              <button className="save-btn" type="button" disabled={busy !== null} onClick={() => { void copyValue(connection.connectUrl, 'AI 连接链接'); }}>复制连接链接</button>
+          <p className={`composer-hint ${styles.composerHint}`}>只在当前页面显示，不写入浏览器存储或日志；只能兑换一次。</p>
+          <p className={`composer-hint ${styles.composerHint}`}>请在 {connection.expiresAt} 前让 AI 访问并兑换。</p>
+          <div className={`composer-footer ${styles.composerFooter}`}>
+            <div className={`tag-input-wrap ${styles.tagInputWrap}`} aria-hidden="true" />
+            <div className={`composer-actions ${styles.composerActions}`}>
+              <button className={`save-btn ${styles.saveBtn}`} type="button" disabled={busy !== null} onClick={() => { void copyValue(connection.connectUrl, 'AI 连接链接'); }}>复制连接链接</button>
             </div>
           </div>
         </div>
       )}
 
-      <div className="composer-footer">
-        <div className="tag-input-wrap" aria-hidden="true" />
-        <div className="composer-actions">
-          <button className="clear-filter" type="button" disabled={busy !== null} onClick={() => { void revoke(); }}>撤销全部访问</button>
-          <button className="clear-filter" type="button" disabled={busy !== null} onClick={() => { void generate(); }}>
+      <div className={`composer-footer ${styles.composerFooter}`}>
+        <div className={`tag-input-wrap ${styles.tagInputWrap}`} aria-hidden="true" />
+        <div className={`composer-actions ${styles.composerActions}`}>
+          <button className={`clear-filter ${styles.secondaryButton}`} type="button" disabled={busy !== null} onClick={() => { void revoke(); }}>撤销全部访问</button>
+          <button className={`clear-filter ${styles.secondaryButton}`} type="button" disabled={busy !== null} onClick={() => { void generate(); }}>
             {busy === 'connection' ? '生成中...' : '生成临时连接'}
           </button>
-          {!trustedToken && <button className="save-btn" type="button" disabled={busy !== null} onClick={() => { void generateTrusted(); }}>
+          {!trustedToken && <button className={`save-btn ${styles.saveBtn}`} type="button" disabled={busy !== null} onClick={() => { void generateTrusted(); }}>
             {busy === 'trusted' ? '生成中...' : '生成长期密钥'}
           </button>}
         </div>
