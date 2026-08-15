@@ -9,6 +9,7 @@ import {
   type NoteMode
 } from '../../domain/noteWriting';
 import { TagInput } from '../../ui';
+import styles from './Composer.module.css';
 
 export { MEMO_MODEL, QA_MODEL, suspendMemoNote, type NoteMode } from '../../domain/noteWriting';
 
@@ -441,7 +442,7 @@ export function Composer({ client = defaultClient, allTags = [], onCreated, onTo
   return (
     <form
       id="inputCard"
-      className={`input-card ${isMemo ? 'memo-mode' : 'qa-mode'}`}
+      className={`input-card ${styles.inputCard} ${isMemo ? 'memo-mode' : 'qa-mode'} ${isMemo ? styles.memoMode : styles.qaMode}`}
       aria-labelledby="composerTitle"
       onSubmit={create}
       onPaste={handlePaste}
@@ -450,19 +451,19 @@ export function Composer({ client = defaultClient, allTags = [], onCreated, onTo
     >
       <input id="noteModeMemo" className="visually-hidden" type="radio" name="noteMode" value="memo" aria-describedby="modeDescription" checked={isMemo} disabled={saving || readingImages} onChange={() => setMode('memo')} />
       <input id="noteModeQa" className="visually-hidden" type="radio" name="noteMode" value="qa" aria-describedby="modeDescription" checked={!isMemo} disabled={saving || readingImages} onChange={() => setMode('qa')} />
-      <div className="composer-head">
+      <div className={`composer-head ${styles.composerHead}`}>
         <h2 id="composerTitle">快速记录</h2>
-        <div className="mode-switch" role="group" aria-label="笔记类型" aria-describedby="modeDescription">
-          <label className={`mode-label ${isMemo ? 'active' : ''}`} htmlFor="noteModeMemo">短笔记</label>
-          <label className={`mode-label ${!isMemo ? 'active' : ''}`} htmlFor="noteModeQa">问答卡</label>
+        <div className={`mode-switch ${styles.modeSwitch}`} role="group" aria-label="笔记类型" aria-describedby="modeDescription">
+          <label className={`mode-label ${styles.modeLabel} ${isMemo ? `active ${styles.active}` : ''}`} htmlFor="noteModeMemo">短笔记</label>
+          <label className={`mode-label ${styles.modeLabel} ${!isMemo ? `active ${styles.active}` : ''}`} htmlFor="noteModeQa">问答卡</label>
         </div>
       </div>
-      <p id="modeDescription" className="composer-hint">{isMemo ? '短笔记会保存到 Ankimo 牌组，保存后暂停，不进入日常复习。' : '问答卡会保留所选牌组，正常参与 Anki 日常复习。'}</p>
-      <div className="composer-fields">
-        <textarea id="frontInput" value={front} disabled={saving} onChange={event => setFront(event.target.value)} placeholder={isMemo ? '现在的想法是…' : '正面 / 问题...'} aria-label={isMemo ? '笔记内容' : '问题'} />
-        <textarea id="backInput" value={back} onChange={event => setBack(event.target.value)} placeholder={isMemo ? '' : '背面 / 答案...'} aria-label={isMemo ? '笔记模式不使用答案' : '答案'} disabled={isMemo || saving} aria-hidden={isMemo} />
+      <p id="modeDescription" className={`composer-hint ${styles.composerHint}`}>{isMemo ? '短笔记会保存到 Ankimo 牌组，保存后暂停，不进入日常复习。' : '问答卡会保留所选牌组，正常参与 Anki 日常复习。'}</p>
+      <div className={`composer-fields ${styles.composerFields}`}>
+        <textarea className={styles.textarea} id="frontInput" value={front} disabled={saving} onChange={event => setFront(event.target.value)} placeholder={isMemo ? '现在的想法是…' : '正面 / 问题...'} aria-label={isMemo ? '笔记内容' : '问题'} />
+        <textarea className={styles.textarea} id="backInput" value={back} onChange={event => setBack(event.target.value)} placeholder={isMemo ? '' : '背面 / 答案...'} aria-label={isMemo ? '笔记模式不使用答案' : '答案'} disabled={isMemo || saving} aria-hidden={isMemo} />
       </div>
-      {isMemo && <div className="composer-images">
+      {isMemo && <div className={`composer-images ${styles.composerImages}`}>
         <input
           id="imageInput"
           className="visually-hidden"
@@ -475,16 +476,16 @@ export function Composer({ client = defaultClient, allTags = [], onCreated, onTo
             event.currentTarget.value = '';
           }}
         />
-        <label className="composer-image-dropzone" htmlFor="imageInput">
+        <label className={`composer-image-dropzone ${styles.imageDropzone}`} htmlFor="imageInput">
           <span>粘贴、拖入或选择截图</span>
           <small>PNG、JPEG、WebP · 最多 {MAX_COMPOSER_IMAGES} 张 · 单张不超过 10MB</small>
         </label>
-        {pendingImages.length > 0 && <div className="composer-image-previews" aria-label="待上传截图">
-          {pendingImages.map((image, index) => <figure className="composer-image-preview" key={image.id}>
-            <img src={image.dataUrl} alt={image.name || `截图 ${index + 1}`} />
+        {pendingImages.length > 0 && <div className={`composer-image-previews ${styles.imagePreviews}`} aria-label="待上传截图">
+          {pendingImages.map((image, index) => <figure className={`composer-image-preview ${styles.imagePreview}`} key={image.id}>
+            <img className={styles.imagePreviewImage} src={image.dataUrl} alt={image.name || `截图 ${index + 1}`} />
             <button
               type="button"
-              className="composer-image-remove"
+              className={`composer-image-remove ${styles.imageRemove}`}
               disabled={saving || readingImages}
               aria-label={`移除 ${image.name || `截图 ${index + 1}`}`}
               onClick={() => setPendingImages(current => current.filter(item => item.id !== image.id))}
@@ -492,23 +493,23 @@ export function Composer({ client = defaultClient, allTags = [], onCreated, onTo
           </figure>)}
         </div>}
       </div>}
-      <input id="advancedToggle" className="visually-hidden" type="checkbox" checked={advanced} disabled={saving} onChange={event => setAdvanced(event.target.checked)} />
-      <div className="composer-footer">
-        <div className="tag-input-wrap">
+      <input id="advancedToggle" className={`visually-hidden ${styles.advancedToggleInput}`} type="checkbox" checked={advanced} disabled={saving} onChange={event => setAdvanced(event.target.checked)} />
+      <div className={`composer-footer ${styles.composerFooter}`}>
+        <div className={`tag-input-wrap ${styles.tagInputWrap}`}>
           <TagInput id="tagInput" value={tags} allTags={allTags} disabled={saving} onChange={nextTags => {
             setPreferences(current => mode === 'memo'
               ? { ...current, memo: { ...current.memo, tags: nextTags } }
               : { ...current, qa: { ...current.qa, tags: nextTags } });
           }} placeholder="添加标签，用空格分隔" />
         </div>
-        <div className="composer-actions">
-          <label className="advanced-toggle" htmlFor="advancedToggle">高级设置 <span className="advanced-chevron" aria-hidden="true"><svg viewBox="0 0 12 7" width="12" height="7" focusable="false"><path d="M1 1l5 5 5-5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.25" /></svg></span></label>
-          <button id="saveBtn" className="save-btn" type="submit" disabled={saving || readingImages || loading || loadingFields}>{saving ? '保存中...' : readingImages ? '读取图片...' : '保存'}</button>
+        <div className={`composer-actions ${styles.composerActions}`}>
+          <label className={`advanced-toggle ${styles.advancedToggle}`} htmlFor="advancedToggle">高级设置 <span className={`advanced-chevron ${styles.advancedChevron}`} aria-hidden="true"><svg viewBox="0 0 12 7" width="12" height="7" focusable="false"><path d="M1 1l5 5 5-5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.25" /></svg></span></label>
+          <button id="saveBtn" className={`save-btn ${styles.saveBtn}`} type="submit" disabled={saving || readingImages || loading || loadingFields}>{saving ? '保存中...' : readingImages ? '读取图片...' : '保存'}</button>
         </div>
       </div>
-      <div className="advanced-controls">
-        <label className="control-field" htmlFor="deckSelect">牌组
-          <select id="deckSelect" value={isMemo ? MEMO_DECK : preferences.qa.deck} disabled={isMemo || loading || saving} onChange={event => {
+      <div className={`advanced-controls ${styles.advancedControls}`}>
+        <label className={`control-field ${styles.controlField}`} htmlFor="deckSelect">牌组
+          <select className={styles.select} id="deckSelect" value={isMemo ? MEMO_DECK : preferences.qa.deck} disabled={isMemo || loading || saving} onChange={event => {
             const nextDeck = event.target.value;
             setPreferences(current => ({ ...current, qa: { ...current.qa, deck: nextDeck } }));
           }}>
@@ -516,8 +517,8 @@ export function Composer({ client = defaultClient, allTags = [], onCreated, onTo
             {decks.map(name => <option key={name} value={name}>{name}</option>)}
           </select>
         </label>
-        <label className="control-field" htmlFor="modelSelect">模板
-          <select id="modelSelect" value={model} disabled={loading || saving} onChange={event => {
+        <label className={`control-field ${styles.controlField}`} htmlFor="modelSelect">模板
+          <select className={styles.select} id="modelSelect" value={model} disabled={loading || saving} onChange={event => {
             const nextModel = event.target.value;
             setPreferences(current => mode === 'memo'
               ? { ...current, memo: { ...current.memo, model: nextModel } }

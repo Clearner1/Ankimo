@@ -1,0 +1,46 @@
+.newNoteButton {
+  position: fixed;
+  z-index: 22;
+  right: max(28px, env(safe-area-inset-right));
+  bottom: calc(24px + env(safe-area-inset-bottom));
+  display: inline-flex;
+  min-height: 52px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 19px;
+  border-radius: var(--radius-chip);
+  background: var(--color-action);
+  box-shadow: 0 10px 28px color-mix(in srgb, var(--color-text-primary) 20%, transparent);
+  color: var(--color-surface-raised);
+  font-size: 14px;
+  font-weight: 650;
+  transition: background var(--motion-transition);
+}
+
+.newNoteButton:hover,
+.newNoteButton:active {
+  background: var(--color-action-strong);
+}
+
+@media (max-width: 768px) {
+  .newNoteButton {
+    right: 50%;
+    bottom: calc(18px + env(safe-area-inset-bottom));
+    min-height: 54px;
+    padding: 0 20px;
+    transform: translateX(50%);
+  }
+}
+
+@media (hover: none) {
+  .newNoteButton:hover {
+    background: var(--color-action);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .newNoteButton {
+    transition: none;
+  }
+}
