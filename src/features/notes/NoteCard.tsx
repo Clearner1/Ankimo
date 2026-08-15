@@ -1,7 +1,8 @@
-import { useState, type KeyboardEvent } from 'react';
+import { useState, type KeyboardEvent, type MouseEvent } from 'react';
 import type { NoteInfo } from '../../api/ankiConnect';
-import { isBlankHtml } from '../../domain/notes';
+import { isBlankHtml, noteFieldValue } from '../../domain/notes';
 import { NoteContent } from './NoteContent';
+import styles from './NoteCard.module.css';
 
 export type NoteCardProps = {
   note: NoteInfo;
@@ -23,12 +24,22 @@ function activate(event: KeyboardEvent, callback: () => void) {
   }
 }
 
+export function shouldCollapseMemo(value: unknown, maxCharacters = 420): boolean {
+  const text = noteFieldValue(value)
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return text.length > maxCharacters;
+}
+
 export function NoteCard({ note, blurAnswers = true, onEdit, onDelete, onTagClick }: NoteCardProps) {
   const fields = Object.entries(note.fields || {}).slice(0, 2);
   const front = fields[0]?.[1] ?? '';
   const back = fields[1]?.[1] ?? '';
   const hasAnswer = !isBlankHtml(back);
   const [revealed, setRevealed] = useState(!blurAnswers);
+  const memoCollapsible = !hasAnswer && shouldCollapseMemo(front);
+  const [memoExpanded, setMemoExpanded] = useState(false);
 
   const toggleAnswer = () => {
     if (blurAnswers) setRevealed(value => !value);
@@ -36,22 +47,42 @@ export function NoteCard({ note, blurAnswers = true, onEdit, onDelete, onTagClic
   const answerBlurred = blurAnswers && !revealed;
   const modified = note.mod ? new Date(note.mod * 1000) : null;
   const validModified = modified && !Number.isNaN(modified.getTime()) ? modified : null;
+  const closeMenu = (event: MouseEvent<HTMLButtonElement>) => {
+    event.currentTarget.closest('details')?.removeAttribute('open');
+  };
 
   return (
-    <article className="note-card" data-note-id={note.noteId}>
-      <div className="note-actions">
-        {onEdit && <button className="edit-btn" data-id={note.noteId} type="button" aria-label={`编辑笔记 ${note.noteId}`} onClick={() => onEdit(note.noteId)}>编辑</button>}
-        {onDelete && <button className="delete-btn" data-id={note.noteId} type="button" aria-label={`删除笔记 ${note.noteId}`} onClick={() => { if (window.confirm('确定删除这条笔记吗？')) void onDelete(note.noteId); }}>删除</button>}
-      </div>
-      <div className="note-field">
-        <div className="note-field-label">{hasAnswer ? '问题' : '笔记'}</div>
-        <NoteContent className="note-field-content" value={front} />
+    <article className={`note-card ${styles.card}`} data-note-id={note.noteId}>
+      <header className={styles.header}>
+        {validModified ? <time className={`note-time ${styles.time}`} dateTime={validModified.toISOString()}>{formatDate(validModified)}</time> : <span className={`note-time ${styles.time}`} aria-hidden="true" />}
+        {(onEdit || onDelete) && (
+          <details className={`note-actions ${styles.actions}`}>
+            <summary className={styles.actionTrigger} aria-label={`笔记 ${note.noteId} 更多操作`}>更多</summary>
+            <div className={styles.actionMenu}>
+              {onEdit && <button className={`edit-btn ${styles.actionButton}`} data-id={note.noteId} type="button" aria-label={`编辑笔记 ${note.noteId}`} onClick={event => { closeMenu(event); onEdit(note.noteId); }}>编辑</button>}
+              {onDelete && <button className={`delete-btn ${styles.actionButton} ${styles.deleteButton}`} data-id={note.noteId} type="button" aria-label={`删除笔记 ${note.noteId}`} onClick={event => { if (window.confirm('确定删除这条笔记吗？')) { closeMenu(event); void onDelete(note.noteId); } }}>删除</button>}
+            </div>
+          </details>
+        )}
+      </header>
+      <div className={`note-field ${styles.field}`}>
+        <div className={`note-field-label ${styles.fieldLabel}`}>{hasAnswer ? '问题' : '笔记'}</div>
+        {memoCollapsible ? (
+          <div className={styles.memo}>
+            <div className={`${styles.memoBody} ${memoExpanded ? '' : styles.memoBodyCollapsed}`}>
+              <NoteContent className={`note-field-content ${styles.fieldContent}`} value={front} />
+            </div>
+            <button className={styles.memoToggle} type="button" aria-expanded={memoExpanded} onClick={() => setMemoExpanded(value => !value)}>
+              {memoExpanded ? '收起' : '展开'}
+            </button>
+          </div>
+        ) : <NoteContent className={`note-field-content ${styles.fieldContent}`} value={front} />}
       </div>
       {hasAnswer && (
-        <div className="note-field answer-field">
-          <div className="note-field-label">答案</div>
+        <div className={`note-field answer-field ${styles.field} ${styles.answerField}`}>
+          <div className={`note-field-label ${styles.fieldLabel}`}>答案</div>
           <NoteContent
-            className={`note-field-content ${answerBlurred ? 'blurred' : 'revealed'}`}
+            className={`note-field-content ${answerBlurred ? 'blurred' : 'revealed'} ${styles.fieldContent} ${answerBlurred ? styles.blurred : styles.revealed}`}
             value={back}
             data-answer-reveal="true"
             role={blurAnswers ? 'button' : undefined}
@@ -63,10 +94,10 @@ export function NoteCard({ note, blurAnswers = true, onEdit, onDelete, onTagClic
           />
         </div>
       )}
-      <div className="note-meta">
+      <div className={`note-meta ${styles.meta}`}>
         {(note.tags || []).map(tag => (
           <span
-            className="note-tag"
+            className={`note-tag ${styles.tag}`}
             data-tag={tag}
             key={tag}
             role={onTagClick ? 'button' : undefined}
@@ -76,9 +107,8 @@ export function NoteCard({ note, blurAnswers = true, onEdit, onDelete, onTagClic
             onKeyDown={event => onTagClick && activate(event, () => onTagClick(tag))}
           >{tag}</span>
         ))}
-        <span className={`note-type ${hasAnswer ? 'note-type-qa' : 'note-type-memo'}`}>{hasAnswer ? '问答卡' : '不复习'}</span>
-        {note.modelName && <span className="note-model">模板：{note.modelName}</span>}
-        {validModified ? <time className="note-time" dateTime={validModified.toISOString()}>{formatDate(validModified)}</time> : <span className="note-time" />}
+        <span className={`note-type ${styles.status} ${hasAnswer ? 'note-type-qa' : 'note-type-memo'}`}>{hasAnswer ? '问答卡' : '不复习'}</span>
+        {note.modelName && <span className={`note-model ${styles.model}`}>模板：{note.modelName}</span>}
       </div>
     </article>
   );
