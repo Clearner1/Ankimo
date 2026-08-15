@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { completeTagValue, tagSuggestions } from './TagInput';
-import { filterTagPaths } from './TagTree';
+import { filterTagPaths } from '../../domain/tags';
+import { completeTagValue, tagSuggestions } from '../../ui';
 import { parsePinnedTags } from './pinnedTags';
 
 describe('navigation pure helpers', () => {
