@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import type { NoteInfo } from '../../api/ankiConnect';
 import { AnkiConnect } from '../../api/ankiConnect';
 import { noteFieldValue } from '../../domain/notes';
-import { TagInput } from '../navigation/TagInput';
+import { Dialog, TagInput } from '../../ui';
+import styles from './EditModal.module.css';
 
 export type EditModalApi = Pick<AnkiConnect, 'notesInfo' | 'updateNote'>;
 export type Toast = (message: string, type?: 'success' | 'error') => void;
@@ -74,7 +75,6 @@ export function EditModal({ noteId, client = defaultClient, allTags = [], onClos
   useEffect(() => {
     if (noteId === null) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') {
         event.preventDefault();
         void save();
@@ -86,46 +86,45 @@ export function EditModal({ noteId, client = defaultClient, allTags = [], onClos
 
   const open = noteId !== null;
   return (
-    <div
-      id="editModalOverlay"
-      className="edit-modal-overlay"
-      role="presentation"
-      style={{ display: open ? 'grid' : 'none' }}
-      onClick={event => { if (event.target === event.currentTarget) onClose(); }}
-    >
-      <div className="edit-modal" role="dialog" aria-modal="true" aria-labelledby="editModalTitle">
-        <div className="edit-modal-header">
-          <h3 id="editModalTitle">编辑笔记</h3>
-          <div id="editModalMeta" className="edit-modal-meta">
-            {note?.modelName && <span className="edit-meta-chip">模板：{note.modelName}</span>}
-            {note && <span className="edit-meta-chip">note：{note.noteId}</span>}
-          </div>
-        </div>
-        <div id="editModalBody" className="edit-modal-body">
-          {loading && <div className="edit-loading">加载中...</div>}
-          {!loading && error && <div className="edit-loading">加载失败: {error}</div>}
-          {!loading && !error && Object.entries(fields).map(([name, value]) => (
-            <div className="edit-field-group" key={name}>
-              <label className="edit-field-label" htmlFor={`edit-field-${name}`}>{name}</label>
-              <textarea
-                id={`edit-field-${name}`}
-                className="edit-field-textarea"
-                rows={3}
-                value={value}
-                onChange={event => setFields(current => ({ ...current, [name]: event.target.value }))}
-              />
+    <Dialog.Root open={open} onOpenChange={nextOpen => { if (!nextOpen) onClose(); }}>
+      <Dialog.Portal>
+        <Dialog.Backdrop id="editModalOverlay" className={`edit-modal-overlay ${styles.overlay}`} role="presentation" />
+        <Dialog.Viewport className={`edit-modal-viewport ${styles.viewport}`}>
+          <Dialog.Popup className={`edit-modal ${styles.modal}`} role="dialog" aria-modal="true" aria-labelledby="editModalTitle">
+            <div className={`edit-modal-header ${styles.header}`}>
+              <Dialog.Title id="editModalTitle" className={`edit-modal-title ${styles.headerTitle}`} render={<h3 />}>编辑笔记</Dialog.Title>
+              <div id="editModalMeta" className={`edit-modal-meta ${styles.meta}`}>
+                {note?.modelName && <span className={`edit-meta-chip ${styles.metaChip}`}>模板：{note.modelName}</span>}
+                {note && <span className={`edit-meta-chip ${styles.metaChip}`}>note：{note.noteId}</span>}
+              </div>
             </div>
-          ))}
-        </div>
-        <div className="edit-modal-tags">
-          <label htmlFor="editTagsInput">标签 <span className="edit-tags-hint">（空格分隔）</span></label>
-          <TagInput id="editTagsInput" value={tags} allTags={allTags} disabled={saving} onChange={setTags} />
-        </div>
-        <div className="edit-modal-actions">
-          <button id="editModalCancel" className="edit-modal-cancel" type="button" onClick={onClose}>取消</button>
-          <button id="editModalSave" className="edit-modal-save" type="button" disabled={saving || loading || !note} onClick={() => void save()}>{saving ? '保存中...' : '保存'}</button>
-        </div>
-      </div>
-    </div>
+            <div id="editModalBody" className={`edit-modal-body ${styles.body}`}>
+              {loading && <div className={`edit-loading ${styles.loading}`}>加载中...</div>}
+              {!loading && error && <div className={`edit-loading ${styles.loading}`}>加载失败: {error}</div>}
+              {!loading && !error && Object.entries(fields).map(([name, value]) => (
+                <div className={`edit-field-group ${styles.fieldGroup}`} key={name}>
+                  <label className={`edit-field-label ${styles.fieldLabel}`} htmlFor={`edit-field-${name}`}>{name}</label>
+                  <textarea
+                    id={`edit-field-${name}`}
+                    className={`edit-field-textarea ${styles.fieldTextarea}`}
+                    rows={3}
+                    value={value}
+                    onChange={event => setFields(current => ({ ...current, [name]: event.target.value }))}
+                  />
+                </div>
+              ))}
+            </div>
+            <div className={`edit-modal-tags ${styles.tags}`}>
+              <label className={styles.tagsLabel} htmlFor="editTagsInput">标签 <span className={`edit-tags-hint ${styles.tagsHint}`}>（空格分隔）</span></label>
+              <TagInput id="editTagsInput" value={tags} allTags={allTags} disabled={saving} onChange={setTags} />
+            </div>
+            <div className={`edit-modal-actions ${styles.actions}`}>
+              <Dialog.Close id="editModalCancel" className={`edit-modal-cancel ${styles.cancel}`} type="button">取消</Dialog.Close>
+              <button id="editModalSave" className={`edit-modal-save ${styles.save}`} type="button" disabled={saving || loading || !note} onClick={() => void save()}>{saving ? '保存中...' : '保存'}</button>
+            </div>
+          </Dialog.Popup>
+        </Dialog.Viewport>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }

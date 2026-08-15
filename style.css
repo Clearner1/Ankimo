@@ -1,111 +1,6 @@
-:root {
-  --paper: #fffdfa;
-  --paper-strong: #ffffff;
-  --rail: #f4f6f2;
-  --rail-deep: #edf1ed;
-  --graphite: #26302b;
-  --graphite-soft: #39443e;
-  --muted: #66736c;
-  --faint: #6b766f;
-  --line: #dfe5df;
-  --line-strong: #c7d1ca;
-  --green: #246b4a;
-  --green-dark: #1b573b;
-  --green-soft: #e7f1e9;
-  --green-wash: #f1f7f2;
-  --danger: #a63d3d;
-  --danger-soft: #fbf1f1;
-  --flag-red: #c44444;
-  --flag-orange: #bd741d;
-  --flag-green: #388254;
-  --sidebar-width: 248px;
-  --content-max: 1080px;
-  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-  --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  --focus: #176d49;
-  --transition: 160ms ease;
-}
-
-* {
-  box-sizing: border-box;
-}
-
-html {
-  min-width: 320px;
-  background: var(--paper);
-  color: var(--graphite);
-  scroll-behavior: smooth;
-}
-
-body {
-  min-width: 320px;
-  min-height: 100vh;
-  margin: 0;
-  background: var(--paper);
-  color: var(--graphite);
-  font-family: var(--font);
-  font-size: 14px;
-  line-height: 1.55;
-  -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
-}
-
-button,
-input,
-textarea,
-select {
-  color: inherit;
-  font: inherit;
-}
-
-button,
-select,
-input[type="radio"],
-input[type="checkbox"] {
-  cursor: pointer;
-}
-
-button:disabled,
-select:disabled,
-input:disabled,
-textarea:disabled {
-  cursor: not-allowed;
-}
-
-button {
-  border: 0;
-}
-
-input,
-textarea,
-select {
-  border-radius: 0;
-}
-
-textarea {
-  resize: vertical;
-}
-
-::selection {
-  background: var(--green-soft);
-  color: var(--graphite);
-}
-
-:focus-visible {
-  outline: 3px solid color-mix(in srgb, var(--focus) 32%, transparent);
-  outline-offset: 2px;
-}
-
-.visually-hidden {
-  position: absolute !important;
-  width: 1px !important;
-  height: 1px !important;
-  padding: 0 !important;
-  overflow: hidden !important;
-  clip: rect(0, 0, 0, 0) !important;
-  white-space: nowrap !important;
-  border: 0 !important;
-}
+@import "./src/styles/tokens.css";
+@import "./src/styles/base.css";
+@import "./src/styles/app-shell.css";
 
 /* Rail */
 
@@ -739,12 +634,6 @@ textarea {
 
 /* Utility bar */
 
-.main-content {
-  min-height: 100vh;
-  margin-left: var(--sidebar-width);
-  background: var(--paper);
-}
-
 .top-bar {
   position: sticky;
   z-index: 20;
@@ -931,16 +820,6 @@ textarea {
 }
 
 /* Composer */
-
-.content-area {
-  padding: 0 30px 76px;
-}
-
-.content-column {
-  width: 100%;
-  max-width: var(--content-max);
-  margin: 0 auto;
-}
 
 .input-card {
   position: relative;
@@ -1170,70 +1049,6 @@ textarea {
   align-items: center;
 }
 
-.tag-autocomplete {
-  position: relative;
-  width: 100%;
-  min-width: 0;
-}
-
-.tag-input-wrap input {
-  width: 100%;
-  min-height: 42px;
-  padding: 8px 12px;
-  border: 1px solid var(--line);
-  outline: 0;
-  background: var(--paper-strong);
-  color: var(--graphite);
-  font-size: 12px;
-}
-
-.tag-input-wrap input:focus {
-  border-color: var(--green);
-}
-
-.tag-input-wrap input::placeholder {
-  color: var(--faint);
-}
-
-.tag-input-mark {
-  display: none;
-}
-
-.tag-suggestions {
-  position: absolute;
-  z-index: 10;
-  top: calc(100% + 4px);
-  right: 0;
-  left: 0;
-  max-height: 240px;
-  overflow-y: auto;
-  border: 1px solid var(--line-strong);
-  background: var(--paper-strong);
-}
-
-.tag-suggestion {
-  display: block;
-  width: 100%;
-  min-height: 42px;
-  padding: 8px 11px;
-  border-bottom: 1px solid var(--line);
-  background: var(--paper-strong);
-  color: var(--graphite);
-  font-size: 12px;
-  text-align: left;
-  cursor: pointer;
-}
-
-.tag-suggestion:last-child {
-  border-bottom: 0;
-}
-
-.tag-suggestion:hover,
-.tag-suggestion.is-active {
-  background: var(--green-soft);
-  color: var(--green-dark);
-}
-
 .composer-actions {
   display: flex;
   min-height: 42px;
@@ -1306,8 +1121,7 @@ textarea {
   border-color: var(--green);
 }
 
-.save-btn,
-.edit-modal-save {
+.save-btn {
   display: inline-flex;
   min-width: 92px;
   min-height: 44px;
@@ -1321,18 +1135,15 @@ textarea {
   transition: background var(--transition), opacity var(--transition);
 }
 
-.save-btn:hover,
-.edit-modal-save:hover {
+.save-btn:hover {
   background: var(--green-dark);
 }
 
-.save-btn:active,
-.edit-modal-save:active {
+.save-btn:active {
   background: var(--green-dark);
 }
 
-.save-btn:disabled,
-.edit-modal-save:disabled {
+.save-btn:disabled {
   opacity: .52;
 }
 
@@ -1736,170 +1547,11 @@ textarea {
   background: var(--danger);
 }
 
-.edit-modal-overlay {
-  position: fixed;
-  z-index: 50;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  padding: 24px;
-  background: rgba(38, 48, 43, .22);
-}
-
-.edit-modal {
-  width: min(100%, 620px);
-  max-height: min(760px, calc(100vh - 48px));
-  overflow: auto;
-  border: 1px solid var(--line-strong);
-  background: var(--paper-strong);
-  box-shadow: 0 8px 22px rgba(38, 48, 43, .12);
-}
-
-.edit-modal-header {
-  display: flex;
-  min-height: 62px;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 20px 22px 14px;
-  border-bottom: 1px solid var(--line);
-}
-
-.edit-modal-header h3 {
-  margin: 0;
-  color: var(--graphite);
-  font-size: 15px;
-  font-weight: 650;
-}
-
-.edit-modal-meta {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 5px;
-  color: var(--muted);
-  font-size: 10px;
-  text-align: right;
-}
-
-.edit-meta-chip {
-  padding: 2px 5px;
-  color: var(--muted);
-  font-size: 10px;
-}
-
-.edit-modal-body {
-  padding: 20px 22px 4px;
-}
-
-.edit-loading {
-  min-height: 90px;
-  color: var(--muted);
-  text-align: center;
-}
-
-.edit-field-group {
-  margin-bottom: 18px;
-}
-
-.edit-field-group:last-child {
-  margin-bottom: 0;
-}
-
-.edit-field-label {
-  display: block;
-  margin-bottom: 7px;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 650;
-  letter-spacing: .04em;
-}
-
-.edit-field-textarea,
-.edit-modal-tags input {
-  display: block;
-  width: 100%;
-  padding: 10px 11px;
-  border: 1px solid var(--line-strong);
-  outline: 0;
-  background: var(--paper);
-  color: var(--graphite);
-  font-size: 14px;
-  line-height: 1.65;
-}
-
-.edit-field-textarea {
-  min-height: 116px;
-}
-
-.edit-field-textarea:focus,
-.edit-modal-tags input:focus {
-  border-color: var(--green);
-  background: var(--paper-strong);
-}
-
-.edit-modal-tags {
-  padding: 17px 22px 4px;
-}
-
-.edit-modal-tags label {
-  display: block;
-  margin-bottom: 7px;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 650;
-}
-
-.edit-tags-hint {
-  color: var(--faint);
-  font-weight: 400;
-}
-
-.edit-modal-tags input {
-  min-height: 42px;
-  font-size: 12px;
-}
-
-.edit-modal-tags .tag-suggestions {
-  position: static;
-  max-height: 180px;
-  margin-top: 4px;
-}
-
-.edit-modal-actions {
-  display: flex;
-  min-height: 78px;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 10px;
-  padding: 18px 22px;
-  border-top: 1px solid var(--line);
-}
-
-.edit-modal-cancel {
-  display: inline-flex;
-  min-width: 72px;
-  min-height: 44px;
-  align-items: center;
-  justify-content: center;
-  padding: 8px 15px;
-  appearance: none;
-  background: transparent;
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.edit-modal-cancel:hover {
-  background: var(--rail);
-  color: var(--graphite);
-}
-
 /* Explicit non-card compatibility hooks */
 
 .stats-card,
 .input-card,
 .note-card,
-.edit-modal,
 .toast {
   border-radius: 0;
 }
@@ -1940,10 +1592,6 @@ textarea {
 
   .overlay.active {
     display: block;
-  }
-
-  .main-content {
-    margin-left: 0;
   }
 
   .menu-btn {
@@ -2014,10 +1662,6 @@ textarea {
     padding: 0 8px;
   }
 
-  .content-area {
-    padding: 0 18px 60px;
-  }
-
   .input-card {
     padding-top: 26px;
   }
@@ -2086,13 +1730,6 @@ textarea {
     bottom: 18px;
   }
 
-  .edit-modal-overlay {
-    padding: 18px;
-  }
-
-  .edit-modal {
-    max-height: calc(100vh - 36px);
-  }
 }
 
 /* Phone */
@@ -2145,10 +1782,6 @@ textarea {
     font-size: 12px;
   }
 
-  .content-area {
-    padding: 0 14px 48px;
-  }
-
   .composer-head h2 {
     font-size: 21px;
   }
@@ -2176,10 +1809,6 @@ textarea {
 
   .composer-footer {
     min-height: 0;
-  }
-
-  .tag-input-wrap input {
-    min-height: 44px;
   }
 
   .composer-actions {
@@ -2234,41 +1863,6 @@ textarea {
     min-height: 44px;
   }
 
-  .edit-modal-overlay {
-    align-items: end;
-    padding: 0;
-  }
-
-  .edit-modal {
-    width: 100%;
-    max-height: 92vh;
-    border-right: 0;
-    border-bottom: 0;
-    border-left: 0;
-  }
-
-  .edit-modal-header,
-  .edit-modal-body,
-  .edit-modal-tags,
-  .edit-modal-actions {
-    padding-right: 16px;
-    padding-left: 16px;
-  }
-
-  .edit-modal-header {
-    min-height: 58px;
-    padding-top: 16px;
-    padding-bottom: 12px;
-  }
-
-  .edit-modal-actions {
-    min-height: 76px;
-  }
-
-  .edit-modal-cancel,
-  .edit-modal-save {
-    flex: 1 1 0;
-  }
 }
 
 /* Keyboard and motion preferences */
@@ -2286,8 +1880,7 @@ textarea {
   .blur-toggle-btn:hover,
   .sync-btn:hover,
   .advanced-toggle:hover,
-  .note-actions button:hover,
-  .edit-modal-cancel:hover {
+  .note-actions button:hover {
     background: transparent;
   }
 }

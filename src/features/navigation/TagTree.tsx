@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { ChangeEvent, MouseEvent, ReactNode } from 'react';
-import { buildTagTree } from '../../domain/tags';
+import { buildTagTree, filterTagPaths } from '../../domain/tags';
 import type { TagTree as TagTreeData, TagTreeNode } from '../../domain/tags';
 
 export type TagTreeProps = {
@@ -10,11 +10,6 @@ export type TagTreeProps = {
   onTagSelect: (tag: string) => void;
   onTogglePin: (tag: string) => void;
 };
-
-export function filterTagPaths(tags: readonly string[], search: string) {
-  const query = search.trim().toLowerCase();
-  return query ? tags.filter((tag) => tag.toLowerCase().includes(query)) : [...tags];
-}
 
 function tagToggleIcon(expanded: boolean, hasChildren: boolean) {
   if (!hasChildren) return null;
