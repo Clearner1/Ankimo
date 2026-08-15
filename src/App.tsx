@@ -224,7 +224,6 @@ export default function App() {
         onOpenChange={setComposerOpen}
         client={client}
         allTags={tags}
-        onCreated={refreshAfterWrite}
         onToast={showToast}
       />
 
