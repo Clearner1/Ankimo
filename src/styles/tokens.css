@@ -1,31 +1,38 @@
 :root {
-  --color-surface: #fffdfa;
+  --color-background: #f5f5f3;
+  --color-surface: var(--color-background);
   --color-surface-raised: #ffffff;
-  --color-surface-rail: #f4f6f2;
-  --color-surface-rail-deep: #edf1ed;
-  --color-text-primary: #26302b;
-  --color-text-secondary: #39443e;
-  --color-text-muted: #66736c;
-  --color-text-faint: #6b766f;
-  --color-border: #dfe5df;
-  --color-border-strong: #c7d1ca;
-  --color-action: #246b4a;
-  --color-action-strong: #1b573b;
-  --color-action-soft: #e7f1e9;
-  --color-action-wash: #f1f7f2;
+  --color-surface-rail: #f0f0ee;
+  --color-surface-rail-deep: #eaeae8;
+  --color-text-primary: #1c1c1e;
+  --color-text-secondary: #3a3a3c;
+  --color-text-muted: #6e6e73;
+  --color-text-faint: #9a9a9a;
+  --color-border: #e5e5e2;
+  --color-border-strong: #d1d1d6;
+  --color-action: #1c1c1e;
+  --color-action-strong: #000000;
+  --color-action-soft: #e5e5e2;
+  --color-action-wash: #f0f0ee;
+  --color-success: #248a3d;
   --color-danger: #a63d3d;
   --color-danger-soft: #fbf1f1;
   --color-flag-red: #c44444;
   --color-flag-orange: #bd741d;
   --color-flag-green: #388254;
+  --color-focus: #1c1c1e;
   --layout-sidebar-width: 248px;
   --layout-content-max: 1080px;
+  --size-touch-target: 44px;
+  --radius-card: 14px;
+  --radius-control: 10px;
+  --radius-sheet: 20px;
+  --radius-chip: 999px;
   --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  --color-focus: #176d49;
   --motion-transition: 160ms ease;
 
-  /* Legacy aliases keep unmigrated global selectors visually identical. */
+  /* Legacy aliases keep unmigrated global selectors working during migration. */
   --paper: var(--color-surface);
   --paper-strong: var(--color-surface-raised);
   --rail: var(--color-surface-rail);
@@ -40,6 +47,7 @@
   --green-dark: var(--color-action-strong);
   --green-soft: var(--color-action-soft);
   --green-wash: var(--color-action-wash);
+  --success: var(--color-success);
   --danger: var(--color-danger);
   --danger-soft: var(--color-danger-soft);
   --flag-red: var(--color-flag-red);
