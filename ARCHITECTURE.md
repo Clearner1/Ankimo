@@ -48,9 +48,12 @@ real-iPhone-proven client-certificate host rather than the existing Bearer
 middleware, and requires the
 fail-closed `X-Ankimo-Client-Verified: 1` marker injected by that proxy. The
 proxy must strip any client-supplied marker before mTLS verification. The
-current production Caddy/Cloudflare route has not been changed; remote use and
-real-iPhone acceptance remain pending explicit deployment approval. The CLI
-stores the database at `~/Library/Application Support/Ankimo/outbox.sqlite3`;
+production Caddy route now forwards `/api/captures*` to the local service,
+strips the client-supplied marker, and injects the marker after the protected
+proxy boundary; config validation, reload, and a local fail-closed route check
+passed. Real-iPhone URLSession/mTLS capture and restart/offline acceptance
+remain open. The CLI stores the database at
+`~/Library/Application Support/Ankimo/outbox.sqlite3`;
 tests use an in-memory or injected temporary database.
 
 ## Dependency rules
