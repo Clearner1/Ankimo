@@ -51,8 +51,8 @@ proxy must strip any client-supplied marker before mTLS verification. The
 production Caddy route now forwards `/api/captures*` to the local service,
 strips the client-supplied marker, and injects the marker after the protected
 proxy boundary; config validation, reload, and a local fail-closed route check
-passed. Real-iPhone URLSession/mTLS capture and restart/offline acceptance
-remain open. The CLI stores the database at
+passed. The user verified real-iPhone URLSession/mTLS capture, offline save,
+and force-quit recovery on 2026-08-29. The CLI stores the database at
 `~/Library/Application Support/Ankimo/outbox.sqlite3`;
 tests use an in-memory or injected temporary database.
 
