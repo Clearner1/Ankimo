@@ -1,15 +1,15 @@
 # Mac Durable Outbox 提案
 
-> **Status: Implemented in the native-capture branch; Mac deployment pending explicit approval**
+> **Status: Implemented and deployed on the Mac; real-iPhone acceptance pending**
 
-本文记录 Mac Durable Outbox 的实现合同。代码已在 `server/ankimo-api.mts` 中实现，但当前分支尚未部署到生产 Mac；Caddy/Cloudflare 路由和真实 iPhone 验收仍需单独批准。Anki 仍是已写入数据的唯一事实来源。
+本文记录 Mac Durable Outbox 的实现合同。代码已在 `server/ankimo-api.mts` 中实现，并已部署到生产 Mac；Caddy `/api/captures` 路由也已加载。真实 iPhone 的 URLSession/mTLS 写入、离线恢复和无重复验收仍待完成。Anki 仍是已写入数据的唯一事实来源。
 
 ### Implementation checkpoint
 
 - Internal API: `POST /api/captures` and `GET /api/captures/<uuid>`.
 - Capture requests use `https://ankimo.yzr-stack.top/api/captures` and the existing API process on `127.0.0.1:8787`; this reuses the real-iPhone-proven client-certificate host and does not use the existing Bearer middleware.
 - The route is fail-closed unless Caddy injects `X-Ankimo-Client-Verified: 1` after verifying mTLS; a client-supplied marker must be stripped first.
-- The current Caddy configuration does not forward `/api/captures`; until an explicitly approved, client-certificate-protected route is added, this endpoint is not remotely usable or safe to expose.
+- Caddy now forwards `/api/captures*` to the local API after stripping any client-supplied marker and injecting `X-Ankimo-Client-Verified: 1`; configuration validation, reload, and a local fail-closed route check passed. The public client-certificate path still requires real-iPhone verification.
 - The CLI stores the outbox at `~/Library/Application Support/Ankimo/outbox.sqlite3`; tests use `:memory:` or an injected temporary path.
 - Native memo and Q&A captures use deck `Ankimo`, models `XXHK - 划线` and `XXHK - 问答`, and leave cards active. This supersedes the older Web short-note suspension wording below.
 
@@ -202,7 +202,7 @@ GET /api/captures/<captureId>
 - Capture API 仅绑定 Mac 本地 API 服务已有的监听边界，不把 AnkiConnect 直接暴露给公网。
 - 当前 Capture 路由依赖客户端证书和 Caddy 的受保护入口，故意不走现有 Bearer middleware。
 - Node 路由要求 `X-Ankimo-Client-Verified: 1`；Caddy 必须先删除客户端传入的同名 header，再只在 mTLS 验证成功后注入它。该 marker 不是 Caddy/mTLS 本身，不能替代尚未批准的代理配置。
-- 当前生产 Caddy 尚未转发 `/api/captures`；在明确批准并部署受客户端证书保护的路由前，该接口不能视为可用或安全地暴露到公网。
+- 当前生产 Caddy 已转发 `/api/captures*`，并在转发前剥离客户端伪造的 marker、注入 `X-Ankimo-Client-Verified: 1`；配置校验、reload 和本地 fail-closed 路由检查均已通过。真实 iPhone 的客户端证书入口仍需验收，不能仅凭本地检查宣称公网链路完成。
 - 严格检查请求方法、`Content-Type`、字段类型、标签长度和总请求大小。
 - 日志只记录 capture ID、状态、错误类别和耗时，不记录正文、答案、标签或凭据。
 - 目录和数据库文件使用最小权限；异常 JSON 必须拒绝。
