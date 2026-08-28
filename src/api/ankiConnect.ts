@@ -13,6 +13,21 @@ export type ReviewCountByDay = [date: string, count: number];
 type Fetcher = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 type ClientOptions = { url?: string; fetch?: Fetcher };
 
+export class AnkiConnectTransportError extends Error {
+  constructor(message: string, cause?: unknown) {
+    super(message);
+    this.name = 'AnkiConnectTransportError';
+    if (cause !== undefined) this.cause = cause;
+  }
+}
+
+export class AnkiConnectActionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'AnkiConnectActionError';
+  }
+}
+
 function defaultUrl() {
   const hostname = typeof location === 'undefined' ? '' : location.hostname;
   return ['127.0.0.1', 'localhost'].includes(hostname) ? 'http://127.0.0.1:8765' : '/anki';
@@ -28,13 +43,23 @@ export class AnkiConnect {
   }
 
   async invoke<T>(action: string, params: Record<string, unknown> = {}): Promise<T> {
-    const response = await this.fetcher(this.url, {
-      method: 'POST',
-      body: JSON.stringify({ action, version: 6, params })
-    });
-    if (!response.ok) throw new Error(`AnkiConnect 请求失败 (${response.status})`);
-    const data: { result: T; error?: string | null } = await response.json();
-    if (data.error) throw new Error(data.error);
+    let response: Response;
+    try {
+      response = await this.fetcher(this.url, {
+        method: 'POST',
+        body: JSON.stringify({ action, version: 6, params })
+      });
+    } catch (error) {
+      throw new AnkiConnectTransportError(error instanceof Error ? error.message : String(error), error);
+    }
+    if (!response.ok) throw new AnkiConnectTransportError(`AnkiConnect 请求失败 (${response.status})`);
+    let data: { result: T; error?: string | null };
+    try {
+      data = await response.json() as { result: T; error?: string | null };
+    } catch (error) {
+      throw new AnkiConnectTransportError(error instanceof Error ? error.message : String(error), error);
+    }
+    if (data.error) throw new AnkiConnectActionError(data.error);
     return data.result;
   }
 

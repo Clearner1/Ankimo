@@ -33,6 +33,26 @@ style.css     Existing global styles during the migration
 server/       Local API service; outside the browser UI boundary
 ```
 
+## Native Capture boundary
+
+`server/ankimo-api.mts` contains the native Capture outbox implementation.
+`POST /api/captures` durably queues a fixed `Ankimo` memo or Q&A creation in
+SQLite and returns `202` without waiting for Anki; a single worker later calls
+AnkiConnect and exposes state through `GET /api/captures/<uuid>`. The outbox is
+not a browser note store and does not change existing `/v1` or AnkiConnect
+contracts. After sync, the row keeps only a fingerprint/note-ID tombstone; the
+capture text and tags are cleared.
+
+The Capture route is `https://ankimo.yzr-stack.top/api/captures`, reusing the
+real-iPhone-proven client-certificate host rather than the existing Bearer
+middleware, and requires the
+fail-closed `X-Ankimo-Client-Verified: 1` marker injected by that proxy. The
+proxy must strip any client-supplied marker before mTLS verification. The
+current production Caddy/Cloudflare route has not been changed; remote use and
+real-iPhone acceptance remain pending explicit deployment approval. The CLI
+stores the database at `~/Library/Application Support/Ankimo/outbox.sqlite3`;
+tests use an in-memory or injected temporary database.
+
 ## Dependency rules
 
 - `api` may depend on platform types, but not on React or features.

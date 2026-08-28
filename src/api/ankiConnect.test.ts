@@ -1,7 +1,35 @@
 import { describe, expect, it } from 'vitest';
-import { AnkiConnect } from './ankiConnect';
+import { AnkiConnect, AnkiConnectActionError, AnkiConnectTransportError } from './ankiConnect';
 
 describe('AnkiConnect', () => {
+  it('distinguishes transport failures from Anki action failures without changing messages', async () => {
+    const transport = new AnkiConnect({
+      url: '/anki',
+      fetch: async () => { throw new Error('fetch failed'); }
+    });
+    await expect(transport.getTags()).rejects.toMatchObject({ name: 'AnkiConnectTransportError', message: 'fetch failed' });
+
+    const http = new AnkiConnect({
+      url: '/anki',
+      fetch: async () => new Response('', { status: 503 })
+    });
+    await expect(http.getTags()).rejects.toMatchObject({ name: 'AnkiConnectTransportError', message: 'AnkiConnect 请求失败 (503)' });
+
+    const malformed = new AnkiConnect({
+      url: '/anki',
+      fetch: async () => new Response('{', { status: 200 })
+    });
+    await expect(malformed.getTags()).rejects.toBeInstanceOf(AnkiConnectTransportError);
+
+    const action = new AnkiConnect({
+      url: '/anki',
+      fetch: async () => new Response(JSON.stringify({ result: null, error: 'model does not exist' }), { status: 200 })
+    });
+    await expect(action.getTags()).rejects.toMatchObject({ name: 'AnkiConnectActionError', message: 'model does not exist' });
+    expect(new AnkiConnectTransportError('transport')).toBeInstanceOf(Error);
+    expect(new AnkiConnectActionError('action')).toBeInstanceOf(Error);
+  });
+
   it('preserves UTF-8 text media semantics', async () => {
     const requests: Record<string, unknown>[] = [];
     const text = '置顶标签';
