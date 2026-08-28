@@ -2,11 +2,13 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { NoteInfo } from '../src/api/ankiConnect';
+import { DatabaseSync } from 'node:sqlite';
+import { AnkiConnectActionError, AnkiConnectTransportError, type NoteInfo } from '../src/api/ankiConnect';
 import { CONNECTION_TTL_MS, createAnkimoApiServer, MAX_TOKEN_CALLS, MAX_TRUSTED_CALLS_PER_DAY, MAX_TRUSTED_CALLS_PER_MINUTE, TOKEN_TTL_MS, type AnkimoApiOptions } from './ankimo-api.mts';
 
 type FakeAnki = {
   deckNames: () => Promise<string[]>;
+  createDeck: (deck: string) => Promise<string>;
   modelFieldNames: (model: string) => Promise<string[]>;
   addNote: (deck: string, model: string, fields: Record<string, string>, tags?: string[]) => Promise<number>;
   findCards: (query: string) => Promise<number[]>;
@@ -22,6 +24,7 @@ const tempDirs: string[] = [];
 function fakeAnki(overrides: Partial<FakeAnki> = {}): FakeAnki {
   return {
     deckNames: async () => ['mubu', 'other'],
+    createDeck: async deck => deck,
     modelFieldNames: async model => model === 'XXHK - 问答' ? ['问题', '答案', '引用'] : ['引用'],
     addNote: async () => 101,
     findCards: async () => [201],
@@ -50,9 +53,51 @@ async function start(options: AnkimoApiOptions = {}) {
   return `http://127.0.0.1:${address.port}`;
 }
 
+async function startWithServer(options: AnkimoApiOptions = {}) {
+  const base = await start(options);
+  const server = servers[servers.length - 1];
+  if (!server) throw new Error('test server was not recorded');
+  return { base, server };
+}
+
 async function request(base: string, path: string, init: RequestInit = {}) {
   const response = await fetch(`${base}${path}`, init);
   return { response, body: await response.json() as Record<string, unknown> };
+}
+
+async function stop(server: ReturnType<typeof createAnkimoApiServer>): Promise<void> {
+  const index = servers.indexOf(server);
+  if (index >= 0) servers.splice(index, 1);
+  await new Promise<void>(resolve => server.close(() => resolve()));
+}
+
+function captureAuth(_token: string, body: unknown): RequestInit {
+  return {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Ankimo-Client-Verified': '1' },
+    body: JSON.stringify(body)
+  };
+}
+
+async function capture(base: string, token: string, body: unknown) {
+  return request(base, '/api/captures', captureAuth(token, body));
+}
+
+async function captureStatus(base: string, _token: string, captureId: string) {
+  return request(base, `/api/captures/${captureId}`, {
+    headers: { 'X-Ankimo-Client-Verified': '1' }
+  });
+}
+
+async function waitForCaptureStatus(base: string, token: string, captureId: string, status: string): Promise<Record<string, unknown>> {
+  let last: Record<string, unknown> = {};
+  for (let attempt = 0; attempt < 30; attempt++) {
+    const result = await captureStatus(base, token, captureId);
+    last = result.body;
+    if (result.body.status === status) return result.body;
+    await new Promise(resolve => setTimeout(resolve, 20));
+  }
+  throw new Error(`capture ${captureId} did not reach ${status}: ${JSON.stringify(last)}`);
 }
 
 async function trustedToken(base: string): Promise<string> {
@@ -307,6 +352,251 @@ describe('Ankimo HTTP API', () => {
     expect(missing.body).toEqual({ notes: [], total: 0, offset: 0, limit: 30 });
     expect(queries).toEqual(['tag:未浏览', 'ankimo-aihot-card-1', '没有结果']);
     expect(infoCalls).toEqual([[102, 101], [102]]);
+  });
+
+  it('returns 202 after SQLite commit without waiting for Anki', async () => {
+    let release: ((noteId: number) => void) | undefined;
+    const addNote = () => new Promise<number>(resolve => { release = resolve; });
+    const base = await start({ client: fakeAnki({
+      deckNames: async () => ['Ankimo'],
+      addNote
+    }) });
+    const bearer = await trustedToken(base);
+    const captureId = '00000000-0000-4000-8000-000000000001';
+    const unverified = await request(base, '/api/captures', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ captureId, mode: 'memo', front: '拒绝', tags: [] })
+    });
+    expect(unverified.response.status).toBe(403);
+    expect(unverified.response.headers.get('cache-control')).toBe('no-store');
+
+    const memoBack = await capture(base, bearer, { captureId, mode: 'memo', front: '正文', back: '不允许', tags: [] });
+    expect(memoBack.response.status).toBe(400);
+    expect(memoBack.response.headers.get('cache-control')).toBe('no-store');
+
+    const created = await capture(base, bearer, {
+      captureId, mode: 'memo', front: '立即返回', tags: []
+    });
+
+    expect(created.response.status).toBe(202);
+    expect(created.response.headers.get('cache-control')).toBe('no-store');
+    expect(created.body).toMatchObject({ captureId });
+    expect(['queued', 'preparing', 'writing']).toContain(created.body.status);
+
+    await new Promise(resolve => setTimeout(resolve, 10));
+    release?.(901);
+    const synced = await waitForCaptureStatus(base, bearer, captureId, 'synced');
+    expect(synced).toMatchObject({ captureId, status: 'synced', noteId: 901 });
+    expect((await captureStatus(base, bearer, captureId)).response.headers.get('cache-control')).toBe('no-store');
+    const missing = await captureStatus(base, bearer, '00000000-0000-4000-8000-000000000099');
+    expect(missing.response.status).toBe(404);
+    expect(missing.response.headers.get('cache-control')).toBe('no-store');
+  });
+
+  it('keeps durable capture idempotency and rejects a different payload', async () => {
+    let release: ((noteId: number) => void) | undefined;
+    let writes = 0;
+    const addNote = () => {
+      writes += 1;
+      return new Promise<number>(resolve => { release = resolve; });
+    };
+    const base = await start({ client: fakeAnki({ deckNames: async () => ['Ankimo'], addNote }) });
+    const bearer = await trustedToken(base);
+    const body = { captureId: '00000000-0000-4000-8000-000000000002', mode: 'memo', front: '只写一次', tags: ['a'] };
+    const first = await capture(base, bearer, body);
+    const duplicate = await capture(base, bearer, body);
+    const conflict = await capture(base, bearer, { ...body, front: '不同内容' });
+
+    expect(first.response.status).toBe(202);
+    expect(duplicate.response.status).toBe(202);
+    expect(duplicate.body).toMatchObject({ captureId: body.captureId, status: expect.any(String) });
+    expect(conflict.response.status).toBe(409);
+    expect(conflict.body).toMatchObject({ error: { code: 'CAPTURE_CONFLICT' } });
+    await waitForCaptureStatus(base, bearer, body.captureId, 'writing');
+    for (let attempt = 0; attempt < 30 && !release; attempt++) {
+      await new Promise(resolve => setTimeout(resolve, 5));
+    }
+    if (!release) throw new Error('addNote release was not registered');
+    release?.(902);
+    await waitForCaptureStatus(base, bearer, body.captureId, 'synced');
+    expect(writes).toBe(1);
+  });
+
+  it('claims a shared queued capture atomically across two workers', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ankimo-capture-test-'));
+    tempDirs.push(dir);
+    const outboxPath = join(dir, 'outbox.sqlite3');
+    let writes = 0;
+    const client = fakeAnki({
+      deckNames: async () => ['Ankimo'],
+      addNote: async () => {
+        writes += 1;
+        await new Promise(resolve => setTimeout(resolve, 30));
+        return 907;
+      }
+    });
+    const first = await startWithServer({ outboxPath, client });
+    const second = await startWithServer({ outboxPath, client });
+    const captureId = '00000000-0000-4000-8000-000000000007';
+    await Promise.all([
+      capture(first.base, '', { captureId, mode: 'memo', front: '共享队列', tags: [] }),
+      capture(second.base, '', { captureId, mode: 'memo', front: '共享队列', tags: [] })
+    ]);
+
+    const synced = await waitForCaptureStatus(first.base, '', captureId, 'synced');
+    expect(synced.noteId).toBe(907);
+    expect(writes).toBe(1);
+  });
+
+  it('moves deterministic model failures to needs_attention', async () => {
+    let writes = 0;
+    const base = await start({ client: fakeAnki({
+      deckNames: async () => ['Ankimo'],
+      modelFieldNames: async () => { throw new AnkiConnectActionError('model does not exist'); },
+      addNote: async () => { writes += 1; return 908; }
+    }) });
+    const captureId = '00000000-0000-4000-8000-000000000008';
+    await capture(base, '', { captureId, mode: 'memo', front: '模板错误', tags: [] });
+    const attention = await waitForCaptureStatus(base, '', captureId, 'needs_attention');
+    expect(attention).toMatchObject({ status: 'needs_attention', errorCode: 'MODEL_INVALID' });
+    expect(writes).toBe(0);
+  });
+
+  it('keeps model lookup transport failures queued for retry', async () => {
+    const base = await start({ captureRetryDelaysMs: [60_000], client: fakeAnki({
+      deckNames: async () => ['Ankimo'],
+      modelFieldNames: async () => { throw new AnkiConnectTransportError('Anki offline'); }
+    }) });
+    const captureId = '00000000-0000-4000-8000-00000000000a';
+    await capture(base, '', { captureId, mode: 'memo', front: '稍后重试', tags: [] });
+    let queued: Record<string, unknown> = {};
+    for (let attempt = 0; attempt < 50; attempt += 1) {
+      queued = (await captureStatus(base, '', captureId)).body;
+      if (queued.errorCode === 'ANKI_OFFLINE') break;
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    expect(queued).toMatchObject({ captureId, status: 'queued', errorCode: 'ANKI_OFFLINE' });
+  });
+
+  it('clears synced payload while retaining its fingerprint tombstone', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ankimo-capture-test-'));
+    tempDirs.push(dir);
+    const outboxPath = join(dir, 'outbox.sqlite3');
+    const base = await start({ outboxPath, client: fakeAnki({
+      deckNames: async () => ['Ankimo'],
+      addNote: async () => 909
+    }) });
+    const bearer = '';
+    const body = { captureId: '00000000-0000-4000-8000-000000000009', mode: 'qa', front: '问题', back: '答案', tags: ['tag'] };
+    await capture(base, bearer, body);
+    await waitForCaptureStatus(base, bearer, body.captureId, 'synced');
+
+    const db = new DatabaseSync(outboxPath);
+    const row = db.prepare('SELECT fingerprint, front, back, tags_json, note_id FROM captures WHERE capture_id = ?').get(body.captureId) as Record<string, unknown>;
+    db.close();
+    expect(row).toMatchObject({ front: '', back: null, tags_json: '[]', note_id: 909 });
+    expect(typeof row.fingerprint).toBe('string');
+
+    const duplicate = await capture(base, bearer, body);
+    const conflict = await capture(base, bearer, { ...body, front: '不同问题' });
+    expect(duplicate.body).toMatchObject({ status: 'synced', noteId: 909 });
+    expect(conflict.response.status).toBe(409);
+  });
+
+  it('recovers a queued capture after restart and writes fixed native fields', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ankimo-capture-test-'));
+    tempDirs.push(dir);
+    const outboxPath = join(dir, 'outbox.sqlite3');
+    const offline = fakeAnki({ deckNames: async () => { throw new Error('offline'); } });
+    const first = await startWithServer({ client: offline, outboxPath, now: () => 1_000, captureRetryDelaysMs: [10, 10] });
+    const firstToken = await trustedToken(first.base);
+    const captureId = '00000000-0000-4000-8000-000000000003';
+    await capture(first.base, firstToken, { captureId, mode: 'memo', front: '等待 Anki', tags: [] });
+    await waitForCaptureStatus(first.base, firstToken, captureId, 'queued');
+    await stop(first.server);
+
+    const calls: { deck: string; model: string; fields: Record<string, string>; tags: string[] } = { deck: '', model: '', fields: {}, tags: [] };
+    const second = await startWithServer({
+      outboxPath,
+      now: () => 2_000,
+      client: fakeAnki({
+        deckNames: async () => ['Ankimo'],
+        modelFieldNames: async () => ['引用', '备注'],
+        addNote: async (deck, model, fields, tags) => {
+          calls.deck = deck;
+          calls.model = model;
+          calls.fields = fields;
+          calls.tags = tags || [];
+          return 903;
+        }
+      })
+    });
+    const secondToken = await trustedToken(second.base);
+    const synced = await waitForCaptureStatus(second.base, secondToken, captureId, 'synced');
+    expect(synced.noteId).toBe(903);
+    expect(calls).toMatchObject({ deck: 'Ankimo', model: 'XXHK - 划线', tags: [] });
+    expect(calls.fields['引用']).toContain('等待 Anki');
+  });
+
+  it('marks interrupted writing as unknown and never retries addNote after restart', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ankimo-capture-test-'));
+    tempDirs.push(dir);
+    const outboxPath = join(dir, 'outbox.sqlite3');
+    const pending = new Promise<number>(() => undefined);
+    const first = await startWithServer({
+      outboxPath,
+      client: fakeAnki({ deckNames: async () => ['Ankimo'], addNote: async () => pending })
+    });
+    const firstToken = await trustedToken(first.base);
+    const captureId = '00000000-0000-4000-8000-000000000004';
+    await capture(first.base, firstToken, { captureId, mode: 'qa', front: '问题', back: '答案', tags: [] });
+    await waitForCaptureStatus(first.base, firstToken, captureId, 'writing');
+    await stop(first.server);
+
+    let retries = 0;
+    const second = await startWithServer({
+      outboxPath,
+      client: fakeAnki({ deckNames: async () => ['Ankimo'], addNote: async () => { retries += 1; return 904; } })
+    });
+    const secondToken = await trustedToken(second.base);
+    const attention = await waitForCaptureStatus(second.base, secondToken, captureId, 'needs_attention');
+    expect(attention).toMatchObject({ captureId, status: 'needs_attention', errorCode: 'WRITE_STATUS_UNKNOWN' });
+    expect(retries).toBe(0);
+  });
+
+  it('writes memo and QA captures as active fixed native notes without suspension', async () => {
+    const models: string[] = [];
+    const calls: { deck: string; model: string; fields: Record<string, string>; tags: string[]; suspended: number } = {
+      deck: '', model: '', fields: {}, tags: [], suspended: 0
+    };
+    const base = await start({ client: fakeAnki({
+      deckNames: async () => ['Ankimo'],
+      modelFieldNames: async model => model === 'XXHK - 问答' ? ['问题', '答案'] : ['引用', '备注'],
+      addNote: async (deck, model, fields, tags) => {
+        models.push(model);
+        calls.deck = deck;
+        calls.model = model;
+        calls.fields = fields;
+        calls.tags = tags || [];
+        return model === 'XXHK - 问答' ? 906 : 905;
+      },
+      findCards: async () => { calls.suspended += 1; return [1]; },
+      suspend: async () => { calls.suspended += 1; return null; },
+      areSuspended: async () => { calls.suspended += 1; return [true]; }
+    }) });
+    const bearer = await trustedToken(base);
+    const memoId = '00000000-0000-4000-8000-000000000005';
+    const qaId = '00000000-0000-4000-8000-000000000006';
+    await capture(base, bearer, { captureId: memoId, mode: 'memo', front: 'active memo', tags: ['memo'] });
+    await capture(base, bearer, { captureId: qaId, mode: 'qa', front: 'question', back: 'answer', tags: ['qa'] });
+    await waitForCaptureStatus(base, bearer, memoId, 'synced');
+    await waitForCaptureStatus(base, bearer, qaId, 'synced');
+    expect(calls.suspended).toBe(0);
+    expect(models).toEqual(['XXHK - 划线', 'XXHK - 问答']);
+    expect(calls.deck).toBe('Ankimo');
+    expect(calls.model).toBe('XXHK - 问答');
+    expect(calls.fields).toMatchObject({ 问题: expect.stringContaining('question'), 答案: expect.stringContaining('answer') });
   });
 
   it('exposes only the four AI operations in OpenAPI', async () => {

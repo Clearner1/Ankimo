@@ -3,8 +3,9 @@ import { chmodSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSy
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { AnkiConnect } from '../src/api/ankiConnect.ts';
-import { createTextNote, MEMO_MODEL, QA_MODEL } from '../src/domain/noteWriting.ts';
+import { DatabaseSync } from 'node:sqlite';
+import { AnkiConnect, AnkiConnectActionError } from '../src/api/ankiConnect.ts';
+import { buildNoteFields, createTextNote, MEMO_MODEL, noteTextToHtml, QA_MODEL } from '../src/domain/noteWriting.ts';
 
 export const API_HOST = '127.0.0.1';
 export const API_PORT = 8787;
@@ -19,13 +20,18 @@ const MAX_SEARCH_QUERY_LENGTH = 1_000;
 const DEFAULT_SEARCH_LIMIT = 30;
 const MAX_SEARCH_LIMIT = 100;
 const DEFAULT_DECK = 'mubu';
+const CAPTURE_DECK = 'Ankimo';
+const CAPTURE_RETRY_DELAYS_MS = [15_000, 60_000] as const;
+const CAPTURE_PROXY_MARKER = 'X-Ankimo-Client-Verified';
+const CAPTURE_WORKER_RETRY_MS = 1_000;
 const PUBLIC_API_URL = 'https://ankimo-api.yzr-stack.top';
 const OPENAPI_URL = `${PUBLIC_API_URL}/openapi.json`;
 const CONNECTION_PREFIX = '/connect/';
 const SECRET_HEADERS = { 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' };
 
 type ApiClient = Pick<AnkiConnect,
-  'deckNames' | 'modelFieldNames' | 'addNote' | 'findCards' | 'findNotes' | 'notesInfo' | 'suspend' | 'areSuspended'>;
+  'deckNames' | 'modelFieldNames' | 'addNote' | 'findCards' | 'findNotes' | 'notesInfo' | 'suspend' | 'areSuspended'> &
+  Partial<Pick<AnkiConnect, 'createDeck'>>;
 type NoteWriter = typeof createTextNote;
 type JsonObject = Record<string, unknown>;
 type JsonResponse = { status: number; body: JsonObject; headers?: Record<string, string> };
@@ -45,11 +51,33 @@ type TrustedTokenRecord = AuthRecord & {
 };
 type TrustedAccess = { record: TrustedTokenRecord | null; path?: string };
 
+type CaptureMode = 'memo' | 'qa';
+type CaptureStatus = 'queued' | 'preparing' | 'writing' | 'synced' | 'needs_attention';
+type CapturePayload = {
+  mode: CaptureMode;
+  front: string;
+  back?: string;
+  tags: string[];
+};
+type CaptureRecord = CapturePayload & {
+  captureId: string;
+  fingerprint: string;
+  status: CaptureStatus;
+  noteId: number | null;
+  errorCode: string | null;
+  attemptCount: number;
+  nextAttemptAt: number;
+  createdAt: number;
+  updatedAt: number;
+};
+
 export type AnkimoApiOptions = {
   client?: ApiClient;
   noteWriter?: NoteWriter;
   now?: () => number;
   trustedTokenPath?: string;
+  outboxPath?: string;
+  captureRetryDelaysMs?: readonly number[];
 };
 
 class HttpError extends Error {
@@ -217,6 +245,374 @@ function hash(value: string): string {
   return createHash('sha256').update(value).digest('hex');
 }
 
+function isDatabaseBusy(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const candidate = error as { code?: unknown; errcode?: unknown; errstr?: unknown };
+  return candidate.code === 'SQLITE_BUSY' || candidate.errcode === 5 || candidate.errstr === 'database is locked';
+}
+
+function captureModel(mode: CaptureMode): string {
+  return mode === 'memo' ? MEMO_MODEL : QA_MODEL;
+}
+
+function capturePayloadJson(payload: CapturePayload): string {
+  return JSON.stringify({
+    mode: payload.mode,
+    front: payload.front,
+    back: payload.mode === 'qa' ? payload.back || '' : undefined,
+    tags: payload.tags
+  });
+}
+
+function captureFingerprint(payload: CapturePayload): string {
+  return hash(capturePayloadJson(payload));
+}
+
+function captureRow(row: Record<string, unknown>): CaptureRecord {
+  return {
+    captureId: String(row.capture_id),
+    fingerprint: String(row.fingerprint),
+    mode: row.mode as CaptureMode,
+    front: String(row.front),
+    ...(row.back === null ? {} : { back: String(row.back) }),
+    tags: JSON.parse(String(row.tags_json)) as string[],
+    status: row.status as CaptureStatus,
+    noteId: row.note_id === null ? null : Number(row.note_id),
+    errorCode: row.error_code === null ? null : String(row.error_code),
+    attemptCount: Number(row.attempt_count),
+    nextAttemptAt: Number(row.next_attempt_at),
+    createdAt: Number(row.created_at),
+    updatedAt: Number(row.updated_at)
+  };
+}
+
+class CaptureStore {
+  private readonly db: DatabaseSync;
+  private readonly now: () => number;
+
+  constructor(path: string, now: () => number) {
+    this.now = now;
+    if (path !== ':memory:') {
+      mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+      chmodSync(dirname(path), 0o700);
+    }
+    this.db = new DatabaseSync(path);
+    if (path !== ':memory:') chmodSync(path, 0o600);
+    this.db.exec(`
+      PRAGMA journal_mode = DELETE;
+      PRAGMA synchronous = FULL;
+      CREATE TABLE IF NOT EXISTS captures (
+        capture_id TEXT PRIMARY KEY,
+        fingerprint TEXT NOT NULL,
+        mode TEXT NOT NULL CHECK (mode IN ('memo', 'qa')),
+        front TEXT NOT NULL,
+        back TEXT,
+        tags_json TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('queued', 'preparing', 'writing', 'synced', 'needs_attention')),
+        note_id INTEGER,
+        error_code TEXT,
+        attempt_count INTEGER NOT NULL DEFAULT 0,
+        next_attempt_at INTEGER NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS captures_queue_idx ON captures (status, next_attempt_at, created_at);
+    `);
+    this.recover();
+  }
+
+  private recover(): void {
+    const currentTime = this.now();
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      this.db.prepare(`
+        UPDATE captures
+        SET status = 'queued', next_attempt_at = ?, updated_at = ?
+        WHERE status IN ('queued', 'preparing')
+      `).run(currentTime, currentTime);
+      this.db.prepare(`
+        UPDATE captures
+        SET status = 'needs_attention', error_code = 'WRITE_STATUS_UNKNOWN', updated_at = ?
+        WHERE status = 'writing'
+      `).run(currentTime);
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
+  get(captureId: string): CaptureRecord | null {
+    const row = this.db.prepare('SELECT * FROM captures WHERE capture_id = ?').get(captureId) as Record<string, unknown> | undefined;
+    return row ? captureRow(row) : null;
+  }
+
+  accept(captureId: string, payload: CapturePayload): CaptureRecord {
+    const fingerprint = captureFingerprint(payload);
+    const currentTime = this.now();
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const existingRow = this.db.prepare('SELECT * FROM captures WHERE capture_id = ?').get(captureId) as Record<string, unknown> | undefined;
+      if (existingRow) {
+        const existing = captureRow(existingRow);
+        if (existing.fingerprint !== fingerprint) {
+          throw new HttpError(409, 'CAPTURE_CONFLICT', '相同 captureId 已用于不同内容');
+        }
+        this.db.exec('COMMIT');
+        return existing;
+      }
+      this.db.prepare(`
+        INSERT INTO captures (
+          capture_id, fingerprint, mode, front, back, tags_json, status, note_id,
+          error_code, attempt_count, next_attempt_at, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, 'queued', NULL, NULL, 0, ?, ?, ?)
+      `).run(
+        captureId,
+        fingerprint,
+        payload.mode,
+        payload.front,
+        payload.back ?? null,
+        JSON.stringify(payload.tags),
+        currentTime,
+        currentTime,
+        currentTime
+      );
+      this.db.exec('COMMIT');
+      const record = this.get(captureId);
+      if (!record) throw new Error('capture commit succeeded but row is missing');
+      return record;
+    } catch (error) {
+      try { this.db.exec('ROLLBACK'); } catch { /* The transaction may already be closed. */ }
+      throw error;
+    }
+  }
+
+  claimNext(currentTime: number): CaptureRecord | null {
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const row = this.db.prepare(`
+        SELECT * FROM captures
+        WHERE status = 'queued'
+        ORDER BY created_at ASC, capture_id ASC
+        LIMIT 1
+      `).get() as Record<string, unknown> | undefined;
+      if (!row || Number(row.next_attempt_at) > currentTime) {
+        this.db.exec('COMMIT');
+        return null;
+      }
+      const attemptCount = Number(row.attempt_count) + 1;
+      const result = this.db.prepare(`
+        UPDATE captures
+        SET status = 'preparing', attempt_count = ?, error_code = NULL, updated_at = ?
+        WHERE capture_id = ? AND status = 'queued'
+      `).run(attemptCount, currentTime, String(row.capture_id));
+      if (Number(result.changes) !== 1) {
+        this.db.exec('COMMIT');
+        return null;
+      }
+      this.db.exec('COMMIT');
+      return captureRow({ ...row, status: 'preparing', attempt_count: attemptCount, error_code: null, updated_at: currentTime });
+    } catch (error) {
+      try { this.db.exec('ROLLBACK'); } catch { /* The transaction may already be closed. */ }
+      if (isDatabaseBusy(error)) return null;
+      throw error;
+    }
+  }
+
+  nextAttemptAt(): number | null {
+    const row = this.db.prepare(`
+      SELECT next_attempt_at FROM captures
+      WHERE status = 'queued'
+      ORDER BY created_at ASC, capture_id ASC
+      LIMIT 1
+    `).get() as { next_attempt_at?: number } | undefined;
+    return row?.next_attempt_at === undefined ? null : Number(row.next_attempt_at);
+  }
+
+  update(captureId: string, values: Partial<Pick<CaptureRecord, 'status' | 'noteId' | 'errorCode' | 'attemptCount' | 'nextAttemptAt'>>): void {
+    const columns: string[] = [];
+    const parameters: (number | string | null)[] = [];
+    const set = (column: string, value: number | string | null) => {
+      columns.push(`${column} = ?`);
+      parameters.push(value);
+    };
+    if (values.status !== undefined) set('status', values.status);
+    if (values.noteId !== undefined) set('note_id', values.noteId);
+    if (values.errorCode !== undefined) set('error_code', values.errorCode);
+    if (values.attemptCount !== undefined) set('attempt_count', values.attemptCount);
+    if (values.nextAttemptAt !== undefined) set('next_attempt_at', values.nextAttemptAt);
+    if (!columns.length) return;
+    set('updated_at', this.now());
+    parameters.push(captureId);
+    this.db.prepare(`UPDATE captures SET ${columns.join(', ')} WHERE capture_id = ?`).run(...parameters);
+  }
+
+  markSynced(captureId: string, noteId: number): void {
+    this.db.prepare(`
+      UPDATE captures
+      SET status = 'synced', note_id = ?, error_code = NULL,
+          front = '', back = NULL, tags_json = '[]', updated_at = ?
+      WHERE capture_id = ?
+    `).run(noteId, this.now(), captureId);
+  }
+
+  close(): void {
+    this.db.close();
+  }
+}
+
+class PermanentCaptureError extends Error {
+  readonly code: string;
+
+  constructor(code: string) {
+    super(code);
+    this.code = code;
+  }
+}
+
+class CaptureWorker {
+  private closed = false;
+  private running = false;
+  private timer: ReturnType<typeof setTimeout> | null = null;
+  private readonly store: CaptureStore;
+  private readonly client: ApiClient;
+  private readonly now: () => number;
+  private readonly retryDelaysMs: readonly number[];
+
+  constructor(
+    store: CaptureStore,
+    client: ApiClient,
+    now: () => number,
+    retryDelaysMs: readonly number[]
+  ) {
+    this.store = store;
+    this.client = client;
+    this.now = now;
+    this.retryDelaysMs = retryDelaysMs;
+    this.wake();
+  }
+
+  wake(): void {
+    if (this.closed || this.running || this.timer) return;
+    this.timer = setTimeout(() => {
+      this.timer = null;
+      void this.run();
+    }, 0);
+    this.timer.unref?.();
+  }
+
+  private scheduleNext(): void {
+    if (this.closed || this.running || this.timer) return;
+    const next = this.store.nextAttemptAt();
+    if (next === null) return;
+    const delay = Math.max(0, next - this.now());
+    this.timer = setTimeout(() => {
+      this.timer = null;
+      void this.run();
+    }, delay);
+    this.timer.unref?.();
+  }
+
+  private scheduleRecovery(): void {
+    if (this.closed || this.running || this.timer) return;
+    this.timer = setTimeout(() => {
+      this.timer = null;
+      void this.run();
+    }, CAPTURE_WORKER_RETRY_MS);
+    this.timer.unref?.();
+  }
+
+  private recordWorkerError(error: unknown): void {
+    if (this.closed) return;
+    console.error(`Capture worker stopped: ${isDatabaseBusy(error) ? 'SQLITE_BUSY' : 'WORKER_ERROR'}`);
+  }
+
+  private async run(): Promise<void> {
+    if (this.closed || this.running) return;
+    this.running = true;
+    try {
+      while (!this.closed) {
+        const record = this.store.claimNext(this.now());
+        if (!record) break;
+        await this.process(record);
+      }
+    } catch (error) {
+      this.recordWorkerError(error);
+    } finally {
+      this.running = false;
+      try {
+        this.scheduleNext();
+      } catch (error) {
+        this.recordWorkerError(error);
+        this.scheduleRecovery();
+      }
+    }
+  }
+
+  private async process(record: CaptureRecord): Promise<void> {
+    const attemptCount = record.attemptCount;
+    try {
+      const decks = await this.client.deckNames();
+      if (!decks.includes(CAPTURE_DECK)) {
+        if (!this.client.createDeck) throw new PermanentCaptureError('DECK_NOT_FOUND');
+        await this.client.createDeck(CAPTURE_DECK);
+      }
+      const model = captureModel(record.mode);
+      let fieldNames: string[];
+      try { fieldNames = await this.client.modelFieldNames(model); }
+      catch (error) {
+        if (error instanceof AnkiConnectActionError) throw new PermanentCaptureError('MODEL_INVALID');
+        throw error;
+      }
+      if (fieldNames.length < (record.mode === 'qa' ? 2 : 1)) {
+        throw new PermanentCaptureError('MODEL_INVALID');
+      }
+      if (this.closed) return;
+      this.store.update(record.captureId, { status: 'writing' });
+      const noteId = await this.client.addNote(
+        CAPTURE_DECK,
+        model,
+        buildNoteFields(
+          fieldNames,
+          noteTextToHtml(record.front),
+          noteTextToHtml(record.back || ''),
+          record.mode
+        ),
+        record.tags
+      );
+      if (this.closed) return;
+      if (typeof noteId !== 'number' || !Number.isSafeInteger(noteId) || noteId <= 0) {
+        this.store.update(record.captureId, { status: 'needs_attention', errorCode: 'WRITE_STATUS_UNKNOWN' });
+        return;
+      }
+      this.store.markSynced(record.captureId, noteId);
+    } catch (error) {
+      if (this.closed) return;
+      if (error instanceof PermanentCaptureError) {
+        this.store.update(record.captureId, { status: 'needs_attention', errorCode: error.code });
+        return;
+      }
+      if (this.store.get(record.captureId)?.status === 'writing') {
+        this.store.update(record.captureId, { status: 'needs_attention', errorCode: 'WRITE_STATUS_UNKNOWN' });
+        return;
+      }
+      const delays = this.retryDelaysMs.length ? this.retryDelaysMs : CAPTURE_RETRY_DELAYS_MS;
+      const delay = delays[Math.min(attemptCount - 1, delays.length - 1)];
+      this.store.update(record.captureId, {
+        status: 'queued',
+        errorCode: 'ANKI_OFFLINE',
+        nextAttemptAt: this.now() + delay
+      });
+    }
+  }
+
+  close(): void {
+    this.closed = true;
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = null;
+  }
+}
+
 function trustedRecord(tokenHash: string, currentTime: number): TrustedTokenRecord {
   return {
     tokenHash,
@@ -354,6 +750,63 @@ function optionalDeck(body: JsonObject): string {
   return body.deck;
 }
 
+function capturePath(pathname: string): 'collection' | string | null {
+  if (pathname === '/api/captures') return 'collection';
+  const match = /^\/api\/captures\/([^/]+)$/.exec(pathname);
+  if (!match || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(match[1])) return null;
+  return match[1].toLowerCase();
+}
+
+function isCaptureRequest(pathname: string): boolean {
+  return pathname === '/api/captures' || pathname.startsWith('/api/captures/');
+}
+
+function captureErrorResponse(error: unknown): JsonResponse {
+  return { ...errorResponse(error), headers: SECRET_HEADERS };
+}
+
+function hasVerifiedCaptureClient(request: IncomingMessage): boolean {
+  return request.headers[CAPTURE_PROXY_MARKER.toLowerCase()] === '1';
+}
+
+function capturePayload(body: JsonObject): { captureId: string; payload: CapturePayload } {
+  onlyFields(body, ['captureId', 'mode', 'front', 'back', 'tags']);
+  const captureId = body.captureId;
+  if (typeof captureId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(captureId)) {
+    throw new HttpError(400, 'INVALID_INPUT', 'captureId 必须是 UUID');
+  }
+  const mode = body.mode;
+  if (mode !== 'memo' && mode !== 'qa') throw new HttpError(400, 'INVALID_INPUT', 'mode 必须是 memo 或 qa');
+  const front = textField(body, 'front');
+  const rawBack = body.back;
+  if (rawBack !== undefined && (typeof rawBack !== 'string' || rawBack.length > 50000)) {
+    throw new HttpError(400, 'INVALID_INPUT', 'back 必须是长度不超过 50000 的文本');
+  }
+  const back = typeof rawBack === 'string' ? rawBack : undefined;
+  if (mode === 'memo' && rawBack !== undefined) throw new HttpError(400, 'INVALID_INPUT', 'memo 模式不能包含 back');
+  if (mode === 'qa' && (!back || !back.trim())) throw new HttpError(400, 'INVALID_INPUT', 'qa 模式需要 back');
+  const tags = optionalTags(body);
+  return {
+    captureId: captureId.toLowerCase(),
+    payload: {
+      mode,
+      front,
+      ...(mode === 'qa' ? { back: back || '' } : {}),
+      tags
+    }
+  };
+}
+
+function captureResponse(record: CaptureRecord): JsonResponse {
+  const body: JsonObject = {
+    captureId: record.captureId,
+    status: record.status
+  };
+  if (record.noteId !== null) body.noteId = record.noteId;
+  if (record.errorCode) body.errorCode = record.errorCode;
+  return json(record.status === 'queued' || record.status === 'preparing' || record.status === 'writing' ? 202 : 200, body, SECRET_HEADERS);
+}
+
 function bearerToken(request: IncomingMessage, tokens: Map<string, TokenRecord>, trusted: TrustedAccess, now: () => number): AuthRecord {
   const header = request.headers.authorization;
   if (typeof header !== 'string' || !/^Bearer \S+$/.test(header)) {
@@ -418,6 +871,9 @@ function connectionCode(pathname: string): string | null {
 
 function routeMethods(pathname: string): readonly string[] | undefined {
   if (connectionCode(pathname)) return ['GET', 'POST'];
+  const capture = capturePath(pathname);
+  if (capture === 'collection') return ['POST'];
+  if (capture) return ['GET'];
   return {
     '/openapi.json': ['GET'],
     '/health': ['GET'],
@@ -438,19 +894,22 @@ async function handleRequest(
   tokens: Map<string, TokenRecord>,
   connections: Map<string, ConnectionRecord>,
   trusted: TrustedAccess,
+  captures: CaptureStore,
+  captureWorker: CaptureWorker,
   now: () => number
 ): Promise<void> {
   const pathname = new URL(request.url || '/', 'http://127.0.0.1').pathname;
   const method = request.method || '';
+  const captureRequest = isCaptureRequest(pathname);
   const methods = routeMethods(pathname);
   if (!methods) {
-    sendJson(response, json(404, { error: { code: 'NOT_FOUND', message: '接口不存在' } }));
+    sendJson(response, json(404, { error: { code: 'NOT_FOUND', message: '接口不存在' } }, captureRequest ? SECRET_HEADERS : undefined));
     return;
   }
   if (!methods.includes(method)) {
     sendJson(response, json(405, { error: { code: 'METHOD_NOT_ALLOWED', message: '请求方法不被支持' } }, {
       Allow: methods.join(', '),
-      ...((pathname === '/api/ai-tokens' || pathname === '/api/ai-connections' || connectionCode(pathname)) ? SECRET_HEADERS : {})
+      ...((captureRequest || pathname === '/api/ai-tokens' || pathname === '/api/ai-connections' || connectionCode(pathname)) ? SECRET_HEADERS : {})
     }));
     return;
   }
@@ -576,6 +1035,47 @@ async function handleRequest(
     return;
   }
 
+  const capture = capturePath(pathname);
+  if (capture === 'collection') {
+    if (!hasVerifiedCaptureClient(request)) {
+      request.resume();
+      sendJson(response, json(403, { error: { code: 'CLIENT_NOT_VERIFIED', message: '客户端身份未通过代理验证' } }, SECRET_HEADERS));
+      return;
+    }
+    if (contentType(request) !== 'application/json') {
+      request.resume();
+      sendJson(response, captureErrorResponse(new HttpError(415, 'UNSUPPORTED_MEDIA_TYPE', '请求体必须使用 application/json')));
+      return;
+    }
+    try {
+      const body = objectBody(await readJson(request));
+      const parsed = capturePayload(body);
+      const record = captures.accept(parsed.captureId, parsed.payload);
+      captureWorker.wake();
+      sendJson(response, captureResponse(record));
+    } catch (error) {
+      sendJson(response, captureErrorResponse(error));
+    }
+    return;
+  }
+  if (capture) {
+    if (!hasVerifiedCaptureClient(request)) {
+      request.resume();
+      sendJson(response, json(403, { error: { code: 'CLIENT_NOT_VERIFIED', message: '客户端身份未通过代理验证' } }, SECRET_HEADERS));
+      return;
+    }
+    try {
+      const record = captures.get(capture);
+      if (!record) {
+        sendJson(response, json(404, { error: { code: 'NOT_FOUND', message: 'Capture 不存在' } }, SECRET_HEADERS));
+        return;
+      }
+      sendJson(response, captureResponse(record));
+    } catch (error) {
+      sendJson(response, captureErrorResponse(error));
+    }
+    return;
+  }
   const tokenRecord = bearerToken(request, tokens, trusted, now);
   if (pathname === '/v1/decks') {
     try {
@@ -651,17 +1151,29 @@ export function createAnkimoApiServer(options: AnkimoApiOptions = {}): Server {
   const tokens = new Map<string, TokenRecord>();
   const connections = new Map<string, ConnectionRecord>();
   const now = options.now || Date.now;
+  const captures = new CaptureStore(options.outboxPath || ':memory:', now);
+  const captureWorker = new CaptureWorker(captures, client, now, options.captureRetryDelaysMs || CAPTURE_RETRY_DELAYS_MS);
   const trusted: TrustedAccess = {
     record: loadTrustedToken(options.trustedTokenPath, now()),
     path: options.trustedTokenPath
   };
-  return createServer((request, response) => {
-    void handleRequest(request, response, client, noteWriter, tokens, connections, trusted, now).catch(error => sendJson(response, errorResponse(error)));
+  const server = createServer((request, response) => {
+    void handleRequest(request, response, client, noteWriter, tokens, connections, trusted, captures, captureWorker, now).catch(error => sendJson(response, errorResponse(error)));
   });
+  server.once('close', () => {
+    captureWorker.close();
+    captures.close();
+  });
+  return server;
 }
 
 export const openApiDocument = OPENAPI_DOCUMENT;
 
 if (process.argv.includes('--serve')) {
-  createAnkimoApiServer({ trustedTokenPath: join(homedir(), 'Library', 'Application Support', 'Ankimo', 'trusted-ai-key.json') }).listen(API_PORT, API_HOST);
+  process.umask(0o077);
+  const applicationSupport = join(homedir(), 'Library', 'Application Support', 'Ankimo');
+  createAnkimoApiServer({
+    outboxPath: join(applicationSupport, 'outbox.sqlite3'),
+    trustedTokenPath: join(applicationSupport, 'trusted-ai-key.json')
+  }).listen(API_PORT, API_HOST);
 }
