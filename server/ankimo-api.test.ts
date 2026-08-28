@@ -470,7 +470,12 @@ describe('Ankimo HTTP API', () => {
     }) });
     const captureId = '00000000-0000-4000-8000-00000000000a';
     await capture(base, '', { captureId, mode: 'memo', front: '稍后重试', tags: [] });
-    const queued = await waitForCaptureStatus(base, '', captureId, 'queued');
+    let queued: Record<string, unknown> = {};
+    for (let attempt = 0; attempt < 50; attempt += 1) {
+      queued = (await captureStatus(base, '', captureId)).body;
+      if (queued.errorCode === 'ANKI_OFFLINE') break;
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
     expect(queued).toMatchObject({ captureId, status: 'queued', errorCode: 'ANKI_OFFLINE' });
   });
 
