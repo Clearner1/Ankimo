@@ -56,6 +56,15 @@ and force-quit recovery on 2026-08-29. The CLI stores the database at
 `~/Library/Application Support/Ankimo/outbox.sqlite3`;
 tests use an in-memory or injected temporary database.
 
+The optional voice-memo extension is implemented on `feature/voice-capture`
+at `135e109` but is not integrated or deployed. It keeps `mode: memo`, accepts
+one bounded M4A in the existing request, invokes the installed Mac
+`typeless-transcribe` CLI once, stores the recording through AnkiConnect, and
+writes manual text, transcript, and `[sound:...]` into the existing first
+field. A transcription with an unknown result stops at `needs_attention` until
+an explicit retry request; it never automatically uploads the recording to
+Typeless twice.
+
 ## Dependency rules
 
 - `api` may depend on platform types, but not on React or features.

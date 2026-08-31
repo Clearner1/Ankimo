@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
+import { execFile } from 'node:child_process';
 import { chmodSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { homedir } from 'node:os';
@@ -15,6 +16,8 @@ export const MAX_TOKEN_CALLS = 100;
 export const MAX_TRUSTED_CALLS_PER_MINUTE = 20;
 export const MAX_TRUSTED_CALLS_PER_DAY = 200;
 export const MAX_JSON_BODY_BYTES = 256 * 1024;
+const MAX_CAPTURE_BODY_BYTES = 8 * 1024 * 1024;
+const MAX_CAPTURE_AUDIO_BYTES = 5 * 1024 * 1024;
 const MAX_IDEMPOTENCY_RECORDS = 1_000;
 const MAX_SEARCH_QUERY_LENGTH = 1_000;
 const DEFAULT_SEARCH_LIMIT = 30;
@@ -30,7 +33,7 @@ const CONNECTION_PREFIX = '/connect/';
 const SECRET_HEADERS = { 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' };
 
 type ApiClient = Pick<AnkiConnect,
-  'deckNames' | 'modelFieldNames' | 'addNote' | 'findCards' | 'findNotes' | 'notesInfo' | 'suspend' | 'areSuspended'> &
+  'deckNames' | 'modelFieldNames' | 'addNote' | 'findCards' | 'findNotes' | 'notesInfo' | 'suspend' | 'areSuspended' | 'storeMediaFileBase64'> &
   Partial<Pick<AnkiConnect, 'createDeck'>>;
 type NoteWriter = typeof createTextNote;
 type JsonObject = Record<string, unknown>;
@@ -58,6 +61,8 @@ type CapturePayload = {
   front: string;
   back?: string;
   tags: string[];
+  audioFilename?: string;
+  audioSha256?: string;
 };
 type CaptureRecord = CapturePayload & {
   captureId: string;
@@ -69,7 +74,11 @@ type CaptureRecord = CapturePayload & {
   nextAttemptAt: number;
   createdAt: number;
   updatedAt: number;
+  transcript: string | null;
+  transcriptionStarted: boolean;
 };
+type CaptureInput = { captureId: string; payload: CapturePayload; audioData?: Buffer };
+type AudioTranscriber = (path: string) => Promise<string>;
 
 export type AnkimoApiOptions = {
   client?: ApiClient;
@@ -77,7 +86,9 @@ export type AnkimoApiOptions = {
   now?: () => number;
   trustedTokenPath?: string;
   outboxPath?: string;
+  captureMediaPath?: string;
   captureRetryDelaysMs?: readonly number[];
+  transcribeAudio?: AudioTranscriber;
 };
 
 class HttpError extends Error {
@@ -241,8 +252,33 @@ function sendJson(response: ServerResponse, result: JsonResponse): void {
   response.end(body);
 }
 
-function hash(value: string): string {
+function hash(value: string | Buffer): string {
   return createHash('sha256').update(value).digest('hex');
+}
+
+function transcribeWithTypeless(path: string): Promise<string> {
+  const script = join(homedir(), '.codex', 'skills', 'typeless-transcribe', 'scripts', 'transcribe.js');
+  return new Promise((resolve, reject) => {
+    execFile(
+      process.execPath,
+      [script, path],
+      { encoding: 'utf8', timeout: 70_000, maxBuffer: 128 * 1024 },
+      (error, stdout, stderr) => {
+        if (error) {
+          reject(new Error(
+            /login|account configuration/i.test(stderr) ? 'TYPELESS_LOGIN_REQUIRED' : 'TYPELESS_FAILED'
+          ));
+          return;
+        }
+        const text = stdout.trim();
+        if (!text || text.length > 50_000) {
+          reject(new Error('TYPELESS_INVALID_RESULT'));
+          return;
+        }
+        resolve(text);
+      }
+    );
+  });
 }
 
 function isDatabaseBusy(error: unknown): boolean {
@@ -255,12 +291,35 @@ function captureModel(mode: CaptureMode): string {
   return mode === 'memo' ? MEMO_MODEL : QA_MODEL;
 }
 
+function captureMediaFilename(record: CaptureRecord): string {
+  return `ankimo-${record.captureId}.m4a`;
+}
+
+function captureFrontHtml(record: CaptureRecord): string {
+  const text = [record.front.trim() ? record.front : '', record.transcript || '']
+    .filter(Boolean)
+    .join('\n\n');
+  const html = noteTextToHtml(text);
+  return record.audioFilename ? `${html}<br>[sound:${captureMediaFilename(record)}]` : html;
+}
+
+function firstFieldValue(note: Awaited<ReturnType<ApiClient['notesInfo']>>[number]): string | null {
+  const fields = Object.values(note.fields).sort((left, right) => {
+    const leftOrder = typeof left === 'string' ? Number.MAX_SAFE_INTEGER : left.order ?? Number.MAX_SAFE_INTEGER;
+    const rightOrder = typeof right === 'string' ? Number.MAX_SAFE_INTEGER : right.order ?? Number.MAX_SAFE_INTEGER;
+    return leftOrder - rightOrder;
+  });
+  const first = fields[0];
+  return first === undefined ? null : typeof first === 'string' ? first : first.value;
+}
+
 function capturePayloadJson(payload: CapturePayload): string {
   return JSON.stringify({
     mode: payload.mode,
     front: payload.front,
     back: payload.mode === 'qa' ? payload.back || '' : undefined,
-    tags: payload.tags
+    tags: payload.tags,
+    audioSha256: payload.audioSha256
   });
 }
 
@@ -276,25 +335,35 @@ function captureRow(row: Record<string, unknown>): CaptureRecord {
     front: String(row.front),
     ...(row.back === null ? {} : { back: String(row.back) }),
     tags: JSON.parse(String(row.tags_json)) as string[],
+    ...(row.audio_filename === null ? {} : { audioFilename: String(row.audio_filename) }),
+    ...(row.audio_sha256 === null ? {} : { audioSha256: String(row.audio_sha256) }),
     status: row.status as CaptureStatus,
     noteId: row.note_id === null ? null : Number(row.note_id),
     errorCode: row.error_code === null ? null : String(row.error_code),
     attemptCount: Number(row.attempt_count),
     nextAttemptAt: Number(row.next_attempt_at),
     createdAt: Number(row.created_at),
-    updatedAt: Number(row.updated_at)
+    updatedAt: Number(row.updated_at),
+    transcript: row.transcript === null ? null : String(row.transcript),
+    transcriptionStarted: Number(row.transcription_started) === 1
   };
 }
 
 class CaptureStore {
   private readonly db: DatabaseSync;
+  private readonly mediaPath: string | null;
   private readonly now: () => number;
 
-  constructor(path: string, now: () => number) {
+  constructor(path: string, mediaPath: string | null, now: () => number) {
     this.now = now;
+    this.mediaPath = mediaPath;
     if (path !== ':memory:') {
       mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
       chmodSync(dirname(path), 0o700);
+    }
+    if (mediaPath) {
+      mkdirSync(mediaPath, { recursive: true, mode: 0o700 });
+      chmodSync(mediaPath, 0o700);
     }
     this.db = new DatabaseSync(path);
     if (path !== ':memory:') chmodSync(path, 0o600);
@@ -308,6 +377,10 @@ class CaptureStore {
         front TEXT NOT NULL,
         back TEXT,
         tags_json TEXT NOT NULL,
+        audio_filename TEXT,
+        audio_sha256 TEXT,
+        transcript TEXT,
+        transcription_started INTEGER NOT NULL DEFAULT 0,
         status TEXT NOT NULL CHECK (status IN ('queued', 'preparing', 'writing', 'synced', 'needs_attention')),
         note_id INTEGER,
         error_code TEXT,
@@ -318,6 +391,15 @@ class CaptureStore {
       );
       CREATE INDEX IF NOT EXISTS captures_queue_idx ON captures (status, next_attempt_at, created_at);
     `);
+    const columns = new Set(
+      (this.db.prepare('PRAGMA table_info(captures)').all() as { name: string }[]).map(column => column.name)
+    );
+    if (!columns.has('audio_filename')) this.db.exec('ALTER TABLE captures ADD COLUMN audio_filename TEXT');
+    if (!columns.has('audio_sha256')) this.db.exec('ALTER TABLE captures ADD COLUMN audio_sha256 TEXT');
+    if (!columns.has('transcript')) this.db.exec('ALTER TABLE captures ADD COLUMN transcript TEXT');
+    if (!columns.has('transcription_started')) {
+      this.db.exec('ALTER TABLE captures ADD COLUMN transcription_started INTEGER NOT NULL DEFAULT 0');
+    }
     this.recover();
   }
 
@@ -327,8 +409,18 @@ class CaptureStore {
     try {
       this.db.prepare(`
         UPDATE captures
+        SET status = 'needs_attention', error_code = 'TRANSCRIPTION_STATUS_UNKNOWN', updated_at = ?
+        WHERE status = 'preparing' AND transcription_started = 1
+      `).run(currentTime);
+      this.db.prepare(`
+        UPDATE captures
         SET status = 'queued', next_attempt_at = ?, updated_at = ?
         WHERE status IN ('queued', 'preparing')
+      `).run(currentTime, currentTime);
+      this.db.prepare(`
+        UPDATE captures
+        SET status = 'queued', next_attempt_at = ?, error_code = 'READBACK_PENDING', updated_at = ?
+        WHERE status = 'writing' AND note_id IS NOT NULL AND audio_filename IS NOT NULL
       `).run(currentTime, currentTime);
       this.db.prepare(`
         UPDATE captures
@@ -347,7 +439,7 @@ class CaptureStore {
     return row ? captureRow(row) : null;
   }
 
-  accept(captureId: string, payload: CapturePayload): CaptureRecord {
+  accept({ captureId, payload, audioData }: CaptureInput): CaptureRecord {
     const fingerprint = captureFingerprint(payload);
     const currentTime = this.now();
     this.db.exec('BEGIN IMMEDIATE');
@@ -361,11 +453,22 @@ class CaptureStore {
         this.db.exec('COMMIT');
         return existing;
       }
+      if (payload.audioFilename) {
+        if (!audioData || !payload.audioSha256 || hash(audioData) !== payload.audioSha256) {
+          throw new HttpError(400, 'INVALID_AUDIO', '录音内容无效');
+        }
+        const path = this.audioPath(payload.audioFilename);
+        const temporaryPath = `${path}.${randomBytes(6).toString('hex')}.tmp`;
+        writeFileSync(temporaryPath, audioData, { mode: 0o600 });
+        renameSync(temporaryPath, path);
+        chmodSync(path, 0o600);
+      }
       this.db.prepare(`
         INSERT INTO captures (
-          capture_id, fingerprint, mode, front, back, tags_json, status, note_id,
+          capture_id, fingerprint, mode, front, back, tags_json, audio_filename,
+          audio_sha256, transcript, transcription_started, status, note_id,
           error_code, attempt_count, next_attempt_at, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, 'queued', NULL, NULL, 0, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, 'queued', NULL, NULL, 0, ?, ?, ?)
       `).run(
         captureId,
         fingerprint,
@@ -373,6 +476,8 @@ class CaptureStore {
         payload.front,
         payload.back ?? null,
         JSON.stringify(payload.tags),
+        payload.audioFilename ?? null,
+        payload.audioSha256 ?? null,
         currentTime,
         currentTime,
         currentTime
@@ -385,6 +490,13 @@ class CaptureStore {
       try { this.db.exec('ROLLBACK'); } catch { /* The transaction may already be closed. */ }
       throw error;
     }
+  }
+
+  audioPath(filename: string): string {
+    if (!this.mediaPath || !/^[0-9a-f-]{36}\.m4a$/i.test(filename)) {
+      throw new HttpError(500, 'AUDIO_STORE_UNAVAILABLE', '录音存储不可用');
+    }
+    return join(this.mediaPath, filename);
   }
 
   claimNext(currentTime: number): CaptureRecord | null {
@@ -447,11 +559,60 @@ class CaptureStore {
     this.db.prepare(`UPDATE captures SET ${columns.join(', ')} WHERE capture_id = ?`).run(...parameters);
   }
 
+  startTranscription(captureId: string): void {
+    this.db.prepare(`
+      UPDATE captures
+      SET transcription_started = 1, error_code = NULL, updated_at = ?
+      WHERE capture_id = ? AND status = 'preparing' AND transcript IS NULL
+    `).run(this.now(), captureId);
+  }
+
+  saveTranscript(captureId: string, transcript: string): void {
+    this.db.prepare(`
+      UPDATE captures
+      SET transcript = ?, transcription_started = 0, updated_at = ?
+      WHERE capture_id = ?
+    `).run(transcript, this.now(), captureId);
+  }
+
+  retryTranscription(captureId: string): CaptureRecord {
+    const record = this.get(captureId);
+    if (!record) throw new HttpError(404, 'NOT_FOUND', 'Capture 不存在');
+    if (!record.audioFilename || record.status !== 'needs_attention' || ![
+      'TYPELESS_FAILED',
+      'TYPELESS_LOGIN_REQUIRED',
+      'TYPELESS_INVALID_RESULT',
+      'TRANSCRIPTION_STATUS_UNKNOWN'
+    ].includes(record.errorCode || '')) {
+      throw new HttpError(409, 'RETRY_NOT_SAFE', '这个 Capture 不能安全地重新转录');
+    }
+    this.db.prepare(`
+      UPDATE captures
+      SET status = 'queued', error_code = NULL, transcription_started = 0,
+          next_attempt_at = ?, updated_at = ?
+      WHERE capture_id = ?
+    `).run(this.now(), this.now(), captureId);
+    const updated = this.get(captureId);
+    if (!updated) throw new Error('capture retry update failed');
+    return updated;
+  }
+
+  removeAudio(record: CaptureRecord): void {
+    if (!record.audioFilename) return;
+    try {
+      unlinkSync(this.audioPath(record.audioFilename));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
+  }
+
   markSynced(captureId: string, noteId: number): void {
     this.db.prepare(`
       UPDATE captures
       SET status = 'synced', note_id = ?, error_code = NULL,
-          front = '', back = NULL, tags_json = '[]', updated_at = ?
+          front = '', back = NULL, tags_json = '[]', audio_filename = NULL,
+          audio_sha256 = NULL, transcript = NULL, transcription_started = 0,
+          updated_at = ?
       WHERE capture_id = ?
     `).run(noteId, this.now(), captureId);
   }
@@ -478,17 +639,20 @@ class CaptureWorker {
   private readonly client: ApiClient;
   private readonly now: () => number;
   private readonly retryDelaysMs: readonly number[];
+  private readonly transcribeAudio: AudioTranscriber;
 
   constructor(
     store: CaptureStore,
     client: ApiClient,
     now: () => number,
-    retryDelaysMs: readonly number[]
+    retryDelaysMs: readonly number[],
+    transcribeAudio: AudioTranscriber
   ) {
     this.store = store;
     this.client = client;
     this.now = now;
     this.retryDelaysMs = retryDelaysMs;
+    this.transcribeAudio = transcribeAudio;
     this.wake();
   }
 
@@ -552,6 +716,35 @@ class CaptureWorker {
   private async process(record: CaptureRecord): Promise<void> {
     const attemptCount = record.attemptCount;
     try {
+      let current = record;
+      if (current.audioFilename && !current.transcript && current.noteId === null) {
+        this.store.startTranscription(current.captureId);
+        let transcript: string;
+        try {
+          transcript = await this.transcribeAudio(this.store.audioPath(current.audioFilename));
+        } catch (error) {
+          if (this.closed) return;
+          const code = error instanceof Error && [
+            'TYPELESS_LOGIN_REQUIRED',
+            'TYPELESS_INVALID_RESULT'
+          ].includes(error.message) ? error.message : 'TYPELESS_FAILED';
+          this.store.update(current.captureId, { status: 'needs_attention', errorCode: code });
+          return;
+        }
+        if (this.closed) return;
+        this.store.saveTranscript(current.captureId, transcript);
+        current = this.store.get(current.captureId) || current;
+      }
+      if (current.audioFilename && !current.transcript) {
+        throw new PermanentCaptureError('TYPELESS_INVALID_RESULT');
+      }
+      if (current.audioFilename && current.noteId !== null) {
+        await this.confirmAudioNote(current, current.noteId);
+        this.store.removeAudio(current);
+        this.store.markSynced(current.captureId, current.noteId);
+        return;
+      }
+
       const decks = await this.client.deckNames();
       if (!decks.includes(CAPTURE_DECK)) {
         if (!this.client.createDeck) throw new PermanentCaptureError('DECK_NOT_FOUND');
@@ -567,32 +760,62 @@ class CaptureWorker {
       if (fieldNames.length < (record.mode === 'qa' ? 2 : 1)) {
         throw new PermanentCaptureError('MODEL_INVALID');
       }
+      if (current.audioFilename) {
+        const filename = captureMediaFilename(current);
+        let stored: string | false | null;
+        try {
+          stored = await this.client.storeMediaFileBase64(
+            filename,
+            readFileSync(this.store.audioPath(current.audioFilename)).toString('base64')
+          );
+        } catch (error) {
+          if (error instanceof AnkiConnectActionError) throw new PermanentCaptureError('MEDIA_WRITE_FAILED');
+          throw error;
+        }
+        if (stored !== filename) throw new PermanentCaptureError('MEDIA_WRITE_FAILED');
+      }
       if (this.closed) return;
-      this.store.update(record.captureId, { status: 'writing' });
+      this.store.update(current.captureId, { status: 'writing' });
       const noteId = await this.client.addNote(
         CAPTURE_DECK,
         model,
         buildNoteFields(
           fieldNames,
-          noteTextToHtml(record.front),
-          noteTextToHtml(record.back || ''),
-          record.mode
+          captureFrontHtml(current),
+          noteTextToHtml(current.back || ''),
+          current.mode
         ),
-        record.tags
+        current.tags
       );
       if (this.closed) return;
       if (typeof noteId !== 'number' || !Number.isSafeInteger(noteId) || noteId <= 0) {
-        this.store.update(record.captureId, { status: 'needs_attention', errorCode: 'WRITE_STATUS_UNKNOWN' });
+        this.store.update(current.captureId, { status: 'needs_attention', errorCode: 'WRITE_STATUS_UNKNOWN' });
         return;
       }
-      this.store.markSynced(record.captureId, noteId);
+      this.store.update(current.captureId, { status: 'writing', noteId });
+      if (current.audioFilename) {
+        current = this.store.get(current.captureId) || { ...current, noteId };
+        await this.confirmAudioNote(current, noteId);
+        this.store.removeAudio(current);
+      }
+      this.store.markSynced(current.captureId, noteId);
     } catch (error) {
       if (this.closed) return;
       if (error instanceof PermanentCaptureError) {
         this.store.update(record.captureId, { status: 'needs_attention', errorCode: error.code });
         return;
       }
-      if (this.store.get(record.captureId)?.status === 'writing') {
+      const latest = this.store.get(record.captureId);
+      if (latest?.status === 'writing' && latest.audioFilename && latest.noteId !== null) {
+        const delays = this.retryDelaysMs.length ? this.retryDelaysMs : CAPTURE_RETRY_DELAYS_MS;
+        this.store.update(record.captureId, {
+          status: 'queued',
+          errorCode: 'READBACK_PENDING',
+          nextAttemptAt: this.now() + delays[0]
+        });
+        return;
+      }
+      if (latest?.status === 'writing') {
         this.store.update(record.captureId, { status: 'needs_attention', errorCode: 'WRITE_STATUS_UNKNOWN' });
         return;
       }
@@ -603,6 +826,13 @@ class CaptureWorker {
         errorCode: 'ANKI_OFFLINE',
         nextAttemptAt: this.now() + delay
       });
+    }
+  }
+
+  private async confirmAudioNote(record: CaptureRecord, noteId: number): Promise<void> {
+    const note = (await this.client.notesInfo([noteId]))[0];
+    if (!note || firstFieldValue(note) !== captureFrontHtml(record)) {
+      throw new PermanentCaptureError('READBACK_MISMATCH');
     }
   }
 
@@ -678,11 +908,11 @@ function contentType(request: IncomingMessage): string {
   return (request.headers['content-type'] || '').split(';', 1)[0].trim().toLowerCase();
 }
 
-async function readJson(request: IncomingMessage): Promise<unknown> {
+async function readJson(request: IncomingMessage, maxBytes = MAX_JSON_BODY_BYTES): Promise<unknown> {
   const declaredLength = Number(request.headers['content-length']);
-  if (Number.isFinite(declaredLength) && declaredLength > MAX_JSON_BODY_BYTES) {
+  if (Number.isFinite(declaredLength) && declaredLength > maxBytes) {
     request.resume();
-    throw new HttpError(413, 'BODY_TOO_LARGE', '请求体不能超过 256 KiB');
+    throw new HttpError(413, 'BODY_TOO_LARGE', `请求体不能超过 ${Math.floor(maxBytes / 1024)} KiB`);
   }
 
   const chunks: Buffer[] = [];
@@ -690,9 +920,9 @@ async function readJson(request: IncomingMessage): Promise<unknown> {
   for await (const chunk of request) {
     const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
     size += buffer.length;
-    if (size > MAX_JSON_BODY_BYTES) {
+    if (size > maxBytes) {
       request.resume();
-      throw new HttpError(413, 'BODY_TOO_LARGE', '请求体不能超过 256 KiB');
+      throw new HttpError(413, 'BODY_TOO_LARGE', `请求体不能超过 ${Math.floor(maxBytes / 1024)} KiB`);
     }
     chunks.push(buffer);
   }
@@ -757,6 +987,12 @@ function capturePath(pathname: string): 'collection' | string | null {
   return match[1].toLowerCase();
 }
 
+function captureRetryPath(pathname: string): string | null {
+  const match = /^\/api\/captures\/([^/]+)\/retry-transcription$/.exec(pathname);
+  if (!match || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(match[1])) return null;
+  return match[1].toLowerCase();
+}
+
 function isCaptureRequest(pathname: string): boolean {
   return pathname === '/api/captures' || pathname.startsWith('/api/captures/');
 }
@@ -769,15 +1005,40 @@ function hasVerifiedCaptureClient(request: IncomingMessage): boolean {
   return request.headers[CAPTURE_PROXY_MARKER.toLowerCase()] === '1';
 }
 
-function capturePayload(body: JsonObject): { captureId: string; payload: CapturePayload } {
-  onlyFields(body, ['captureId', 'mode', 'front', 'back', 'tags']);
+function capturePayload(body: JsonObject): CaptureInput {
+  onlyFields(body, ['captureId', 'mode', 'front', 'back', 'tags', 'audio']);
   const captureId = body.captureId;
   if (typeof captureId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(captureId)) {
     throw new HttpError(400, 'INVALID_INPUT', 'captureId 必须是 UUID');
   }
   const mode = body.mode;
   if (mode !== 'memo' && mode !== 'qa') throw new HttpError(400, 'INVALID_INPUT', 'mode 必须是 memo 或 qa');
-  const front = textField(body, 'front');
+  const normalizedCaptureId = captureId.toLowerCase();
+  let audioData: Buffer | undefined;
+  let audioFilename: string | undefined;
+  let audioSha256: string | undefined;
+  if (body.audio !== undefined) {
+    if (mode !== 'memo') throw new HttpError(400, 'INVALID_INPUT', '录音只支持 memo 模式');
+    const audio = objectBody(body.audio);
+    onlyFields(audio, ['format', 'data']);
+    if (audio.format !== 'm4a' || typeof audio.data !== 'string' || !audio.data.length ||
+        audio.data.length > Math.ceil(MAX_CAPTURE_AUDIO_BYTES * 4 / 3) + 4 ||
+        !/^[A-Za-z0-9+/]+={0,2}$/.test(audio.data)) {
+      throw new HttpError(400, 'INVALID_AUDIO', '录音必须是有效的 m4a Base64 数据');
+    }
+    audioData = Buffer.from(audio.data, 'base64');
+    if (!audioData.length || audioData.length > MAX_CAPTURE_AUDIO_BYTES ||
+        audioData.toString('base64').replace(/=+$/, '') !== audio.data.replace(/=+$/, '')) {
+      throw new HttpError(400, 'INVALID_AUDIO', '录音必须是有效的 m4a Base64 数据');
+    }
+    audioFilename = `${normalizedCaptureId}.m4a`;
+    audioSha256 = hash(audioData);
+  }
+  const rawFront = body.front;
+  if (typeof rawFront !== 'string' || rawFront.length > 50_000 || (!rawFront.trim() && !audioData)) {
+    throw new HttpError(400, 'INVALID_INPUT', 'front 必须是非空文本，纯录音时可以为空');
+  }
+  const front = rawFront;
   const rawBack = body.back;
   if (rawBack !== undefined && (typeof rawBack !== 'string' || rawBack.length > 50000)) {
     throw new HttpError(400, 'INVALID_INPUT', 'back 必须是长度不超过 50000 的文本');
@@ -787,13 +1048,15 @@ function capturePayload(body: JsonObject): { captureId: string; payload: Capture
   if (mode === 'qa' && (!back || !back.trim())) throw new HttpError(400, 'INVALID_INPUT', 'qa 模式需要 back');
   const tags = optionalTags(body);
   return {
-    captureId: captureId.toLowerCase(),
+    captureId: normalizedCaptureId,
     payload: {
       mode,
       front,
       ...(mode === 'qa' ? { back: back || '' } : {}),
-      tags
-    }
+      tags,
+      ...(audioFilename ? { audioFilename, audioSha256 } : {})
+    },
+    ...(audioData ? { audioData } : {})
   };
 }
 
@@ -871,6 +1134,7 @@ function connectionCode(pathname: string): string | null {
 
 function routeMethods(pathname: string): readonly string[] | undefined {
   if (connectionCode(pathname)) return ['GET', 'POST'];
+  if (captureRetryPath(pathname)) return ['POST'];
   const capture = capturePath(pathname);
   if (capture === 'collection') return ['POST'];
   if (capture) return ['GET'];
@@ -1035,6 +1299,23 @@ async function handleRequest(
     return;
   }
 
+  const retryCapture = captureRetryPath(pathname);
+  if (retryCapture) {
+    request.resume();
+    if (!hasVerifiedCaptureClient(request)) {
+      sendJson(response, json(403, { error: { code: 'CLIENT_NOT_VERIFIED', message: '客户端身份未通过代理验证' } }, SECRET_HEADERS));
+      return;
+    }
+    try {
+      const record = captures.retryTranscription(retryCapture);
+      captureWorker.wake();
+      sendJson(response, captureResponse(record));
+    } catch (error) {
+      sendJson(response, captureErrorResponse(error));
+    }
+    return;
+  }
+
   const capture = capturePath(pathname);
   if (capture === 'collection') {
     if (!hasVerifiedCaptureClient(request)) {
@@ -1048,9 +1329,10 @@ async function handleRequest(
       return;
     }
     try {
-      const body = objectBody(await readJson(request));
+      // ponytail: one bounded JSON file keeps background upload atomic; use multipart only if real recordings outgrow 5 MiB.
+      const body = objectBody(await readJson(request, MAX_CAPTURE_BODY_BYTES));
       const parsed = capturePayload(body);
-      const record = captures.accept(parsed.captureId, parsed.payload);
+      const record = captures.accept(parsed);
       captureWorker.wake();
       sendJson(response, captureResponse(record));
     } catch (error) {
@@ -1151,8 +1433,14 @@ export function createAnkimoApiServer(options: AnkimoApiOptions = {}): Server {
   const tokens = new Map<string, TokenRecord>();
   const connections = new Map<string, ConnectionRecord>();
   const now = options.now || Date.now;
-  const captures = new CaptureStore(options.outboxPath || ':memory:', now);
-  const captureWorker = new CaptureWorker(captures, client, now, options.captureRetryDelaysMs || CAPTURE_RETRY_DELAYS_MS);
+  const captures = new CaptureStore(options.outboxPath || ':memory:', options.captureMediaPath || null, now);
+  const captureWorker = new CaptureWorker(
+    captures,
+    client,
+    now,
+    options.captureRetryDelaysMs || CAPTURE_RETRY_DELAYS_MS,
+    options.transcribeAudio || transcribeWithTypeless
+  );
   const trusted: TrustedAccess = {
     record: loadTrustedToken(options.trustedTokenPath, now()),
     path: options.trustedTokenPath
@@ -1174,6 +1462,7 @@ if (process.argv.includes('--serve')) {
   const applicationSupport = join(homedir(), 'Library', 'Application Support', 'Ankimo');
   createAnkimoApiServer({
     outboxPath: join(applicationSupport, 'outbox.sqlite3'),
+    captureMediaPath: join(applicationSupport, 'capture-audio'),
     trustedTokenPath: join(applicationSupport, 'trusted-ai-key.json')
   }).listen(API_PORT, API_HOST);
 }
