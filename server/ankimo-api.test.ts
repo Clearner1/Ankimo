@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -14,6 +14,7 @@ type FakeAnki = {
   findCards: (query: string) => Promise<number[]>;
   findNotes: (query: string) => Promise<number[]>;
   notesInfo: (notes: number[]) => Promise<NoteInfo[]>;
+  storeMediaFileBase64: (filename: string, data: string) => Promise<string | false | null>;
   suspend: (cards: number[]) => Promise<null>;
   areSuspended: (cards: number[]) => Promise<boolean[]>;
 };
@@ -35,6 +36,7 @@ function fakeAnki(overrides: Partial<FakeAnki> = {}): FakeAnki {
       fields: { 问题: { value: `note ${noteId}`, order: 0 } },
       tags: []
     })),
+    storeMediaFileBase64: async filename => filename,
     suspend: async () => null,
     areSuspended: async () => [true],
     ...overrides
@@ -597,6 +599,155 @@ describe('Ankimo HTTP API', () => {
     expect(calls.deck).toBe('Ankimo');
     expect(calls.model).toBe('XXHK - 问答');
     expect(calls.fields).toMatchObject({ 问题: expect.stringContaining('question'), 答案: expect.stringContaining('answer') });
+  });
+
+  it('transcribes one audio capture and stores text plus playable Anki media', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ankimo-audio-capture-test-'));
+    tempDirs.push(dir);
+    const captureId = '00000000-0000-4000-8000-00000000000b';
+    const audio = Buffer.from('small fake m4a');
+    let transcriptions = 0;
+    let storedMedia = '';
+    let fields: Record<string, string> = {};
+    const base = await start({
+      outboxPath: join(dir, 'outbox.sqlite3'),
+      captureMediaPath: join(dir, 'audio'),
+      transcribeAudio: async path => {
+        transcriptions += 1;
+        expect(existsSync(path)).toBe(true);
+        return '转录文字';
+      },
+      client: fakeAnki({
+        deckNames: async () => ['Ankimo'],
+        storeMediaFileBase64: async (filename, data) => {
+          storedMedia = filename;
+          expect(Buffer.from(data, 'base64')).toEqual(audio);
+          return filename;
+        },
+        addNote: async (_deck, _model, values) => {
+          fields = values;
+          return 910;
+        },
+        notesInfo: async () => [{
+          noteId: 910,
+          fields: { 引用: { value: fields['引用'] || '', order: 0 } },
+          tags: []
+        }]
+      })
+    });
+    const body = {
+      captureId,
+      mode: 'memo',
+      front: '手输文字',
+      tags: [],
+      audio: { format: 'm4a', data: audio.toString('base64') }
+    };
+
+    expect((await capture(base, '', body)).response.status).toBe(202);
+    const synced = await waitForCaptureStatus(base, '', captureId, 'synced');
+    expect(synced).toMatchObject({ noteId: 910, status: 'synced' });
+    expect(transcriptions).toBe(1);
+    expect(storedMedia).toBe(`ankimo-${captureId}.m4a`);
+    expect(fields['引用']).toContain('手输文字');
+    expect(fields['引用']).toContain('转录文字');
+    expect(fields['引用']).toContain(`[sound:ankimo-${captureId}.m4a]`);
+    expect(existsSync(join(dir, 'audio', `${captureId}.m4a`))).toBe(false);
+
+    expect((await capture(base, '', body)).body).toMatchObject({ status: 'synced', noteId: 910 });
+    expect(transcriptions).toBe(1);
+  });
+
+  it('never retries an ambiguous transcription until the user asks', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ankimo-audio-retry-test-'));
+    tempDirs.push(dir);
+    const captureId = '00000000-0000-4000-8000-00000000000c';
+    let attempts = 0;
+    let fields: Record<string, string> = {};
+    const base = await start({
+      outboxPath: join(dir, 'outbox.sqlite3'),
+      captureMediaPath: join(dir, 'audio'),
+      transcribeAudio: async () => {
+        attempts += 1;
+        if (attempts === 1) throw new Error('ambiguous timeout');
+        return '用户确认后重试成功';
+      },
+      client: fakeAnki({
+        deckNames: async () => ['Ankimo'],
+        addNote: async (_deck, _model, values) => {
+          fields = values;
+          return 911;
+        },
+        notesInfo: async () => [{
+          noteId: 911,
+          fields: { 引用: { value: fields['引用'] || '', order: 0 } },
+          tags: []
+        }]
+      })
+    });
+    await capture(base, '', {
+      captureId,
+      mode: 'memo',
+      front: '',
+      tags: [],
+      audio: { format: 'm4a', data: Buffer.from('voice').toString('base64') }
+    });
+    const attention = await waitForCaptureStatus(base, '', captureId, 'needs_attention');
+    expect(attention).toMatchObject({ errorCode: 'TYPELESS_FAILED' });
+    await new Promise(resolve => setTimeout(resolve, 50));
+    expect(attempts).toBe(1);
+
+    const retry = await request(base, `/api/captures/${captureId}/retry-transcription`, {
+      method: 'POST',
+      headers: { 'X-Ankimo-Client-Verified': '1' }
+    });
+    expect(retry.response.status).toBe(202);
+    expect((await waitForCaptureStatus(base, '', captureId, 'synced')).noteId).toBe(911);
+    expect(attempts).toBe(2);
+  });
+
+  it('marks an interrupted transcription unknown after restart without uploading again', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ankimo-audio-restart-test-'));
+    tempDirs.push(dir);
+    const outboxPath = join(dir, 'outbox.sqlite3');
+    const captureMediaPath = join(dir, 'audio');
+    const captureId = '00000000-0000-4000-8000-00000000000d';
+    let started = false;
+    const first = await startWithServer({
+      outboxPath,
+      captureMediaPath,
+      transcribeAudio: async () => {
+        started = true;
+        return new Promise<string>(() => undefined);
+      },
+      client: fakeAnki()
+    });
+    await capture(first.base, '', {
+      captureId,
+      mode: 'memo',
+      front: '',
+      tags: [],
+      audio: { format: 'm4a', data: Buffer.from('voice').toString('base64') }
+    });
+    await waitForCaptureStatus(first.base, '', captureId, 'preparing');
+    for (let attempt = 0; attempt < 30 && !started; attempt++) {
+      await new Promise(resolve => setTimeout(resolve, 5));
+    }
+    expect(started).toBe(true);
+    await stop(first.server);
+
+    let restartedUploads = 0;
+    const second = await start({
+      outboxPath,
+      captureMediaPath,
+      transcribeAudio: async () => {
+        restartedUploads += 1;
+        return '不应执行';
+      },
+      client: fakeAnki()
+    });
+    const attention = await waitForCaptureStatus(second, '', captureId, 'needs_attention');
+    expect(attention).toMatchObject({ errorCode: 'TRANSCRIPTION_STATUS_UNKNOWN' });
+    expect(restartedUploads).toBe(0);
   });
 
   it('exposes only the four AI operations in OpenAPI', async () => {

@@ -1,6 +1,8 @@
 # Mac Durable Outbox 提案
 
-> **Status: Implemented, deployed, and accepted on a real iPhone (2026-08-29)**
+> **Core text Capture status: Implemented, deployed, and accepted on a real iPhone (2026-08-29)**
+>
+> **Voice extension status: Implemented on `feature/voice-capture` at `135e109`; not integrated or deployed; real-device acceptance pending (2026-08-31)**
 
 本文记录 Mac Durable Outbox 的实现合同。代码已在 `server/ankimo-api.mts` 中实现，并已部署到生产 Mac；Caddy `/api/captures` 路由也已加载。用户已在真实 iPhone 上完成 URLSession/mTLS 写入、离线恢复和无重复验收。Anki 仍是已写入数据的唯一事实来源。
 
@@ -12,6 +14,10 @@
 - Caddy now forwards `/api/captures*` to the local API after stripping any client-supplied marker and injecting `X-Ankimo-Client-Verified: 1`; configuration validation, reload, and a local fail-closed route check passed. The user verified the public client-certificate path on the real iPhone on 2026-08-29.
 - The CLI stores the outbox at `~/Library/Application Support/Ankimo/outbox.sqlite3`; tests use `:memory:` or an injected temporary path.
 - Native memo and Q&A captures use deck `Ankimo`, models `XXHK - 划线` and `XXHK - 问答`, and leave cards active. This supersedes the older Web short-note suspension wording below.
+- The voice extension keeps `mode: memo`, accepts one bounded M4A, and invokes
+  `~/.codex/skills/typeless-transcribe/scripts/transcribe.js` as a fixed
+  no-shell child process. Tests inject a fake transcriber and never upload real
+  audio to Typeless.
 
 ## 1. 背景与目标
 
@@ -57,6 +63,12 @@ Durable Outbox ──► 单线程后台 worker ──► 127.0.0.1:8765 AnkiCon
 
 Mac 在线但 Anki 未打开时，命令仍可进入 `queued`，随后自动重试。Mac 本身不可达时，Mac 端无法确认本地落盘；原生 iOS 的本地待同步队列负责保留内容并在下次启动或网络恢复后重试。
 
+语音短笔记沿用同一条队列：Mac 先将 M4A 原子写入私有 staging
+目录并提交 SQLite，再执行一次 Typeless 转录。转录成功后保存文字，
+随后以 `ankimo-<captureId>.m4a` 写入 Anki media，并将“手输文字、转录
+文字、`[sound:...]`”写入现有 `引用` 字段。媒体和字段精确回读完成前
+不得报告 `synced`。
+
 这不是把所有 Anki 笔记复制到 Mac。浏览、搜索、编辑、删除和长期组织仍继续以现有 AnkiConnect 数据为准；Outbox 只展示极短生命周期的“待写入”状态。
 
 ## 3. Outbox 持久化设计
@@ -82,6 +94,8 @@ Mac 在线但 Anki 未打开时，命令仍可进入 `queued`，随后自动重�
 | `next_attempt_at` | 下次重试时间 |
 | `error_code` | 可分类的最后错误 |
 | `created_at` / `updated_at` | 时间戳 |
+| `audio_filename` / `audio_sha256` | 短期 staging 文件和幂等摘要；非语音任务为空 |
+| `transcript` / `transcription_started` | 转录结果与崩溃恢复边界；同步后清空 |
 
 推荐唯一约束：`capture_id`。重复提交同一 `capture_id` 时必须比较 `fingerprint`：内容相同则返回原任务，内容不同则返回 `409 Conflict`，避免幂等键被复用造成数据混淆。
 任务进入 `synced` 后清空 `front`、`back` 和 `tags_json`，只保留 `fingerprint`、`mode`、`note_id` 与状态 tombstone，用于后续幂等判断而不永久累积正文。
@@ -131,6 +145,12 @@ memo 和问答卡都保持 active，正常参与 Anki 复习，不执行短笔�
 
 `addNote` 是最需要谨慎的边界：如果 Mac 在 Anki 已创建笔记之后、SQLite 记录 `note_id` 之前崩溃，结果无法可靠判断。此时宁可转为 `needs_attention`，也不自动再次 `addNote`，以避免重复笔记。
 
+Typeless 调用也是未知结果边界。worker 在调用前持久化
+`transcription_started = 1`；进程若在结果落盘前中断，重启后进入
+`TRANSCRIPTION_STATUS_UNKNOWN`，绝不自动再次上传。只有用户触发
+`POST /api/captures/<uuid>/retry-transcription` 才会重新排队，而且该
+入口拒绝 `WRITE_STATUS_UNKNOWN` 等不安全状态。
+
 后台 worker 不需要独立进程、事件总线或任务框架：复用现有 Mac API 服务，服务启动时扫描未完成任务，新任务提交后唤醒同一个单线程处理循环。worker 用 SQLite 原子 claim 保证多个服务实例共享数据库时同一 capture 也只会有一个 `addNote`。全局一次处理一个任务，保持简单的 FIFO 顺序，避免多个写入同时操作 Anki collection。
 
 建议重试策略：Anki 连接或其他 transport 暂时不可达时首次约 15 秒后重试，随后约每 60 秒持续重试；Anki action 明确报告模型不存在、字段不足等确定性配置错误进入 `needs_attention`，`addNote` 结果不确定也进入 `needs_attention`。
@@ -154,6 +174,20 @@ Content-Type: application/json
   "tags": []
 }
 ```
+
+语音 memo 可让 `front` 为空，并增加：
+
+```json
+{
+  "audio": {
+    "format": "m4a",
+    "data": "base64-encoded-audio"
+  }
+}
+```
+
+音频只允许 memo、M4A 和单文件。原始 M4A 上限为 5 MiB；包含 Base64
+的完整 Capture JSON 上限为 8 MiB。纯文字接口仍沿用 256 KiB 上限。
 
 成功写入 Outbox 后返回：
 
@@ -179,11 +213,15 @@ GET /api/captures/<captureId>
 
 客户端只在存在未完成任务时查询；没有未完成任务时停止查询。暂不使用 WebSocket、SSE 或事件总线。
 
-普通 Anki 离线错误由 worker 自动重试；`needs_attention` 只通过后续人工确认处理，当前合同不提供自动再次 `addNote` 的 retry 路由。
+普通 Anki 离线错误由 worker 自动重试；`needs_attention` 只通过后续人工确认处理。合同不提供自动再次 `addNote` 的 retry 路由；新增的显式 retry 仅允许尚未进入 Anki 写入边界的转录失败。
 
 ## 6. 图片、请求大小与性能
 
 纯文字请求在 SQLite commit 后快速返回，不等待 Anki 的网络反馈。当前请求沿用既有 `256 KiB` JSON 上限；图片不在 Capture 合同内。
+
+语音扩展使用一个有界 JSON 上传文件是第一版的刻意简化：典型录音约
+30 秒，iOS 端上限五分钟。只有真实录音超过当前 5 MiB 上限时才改为
+multipart 或分块上传，不提前引入上传依赖。
 
 ## 7. 前端行为
 
@@ -205,6 +243,8 @@ GET /api/captures/<captureId>
 - 当前生产 Caddy 已转发 `/api/captures*`，并在转发前剥离客户端伪造的 marker、注入 `X-Ankimo-Client-Verified: 1`；配置校验、reload、本地 fail-closed 路由检查和 2026-08-29 的真实 iPhone 客户端证书入口验收均已通过。
 - 严格检查请求方法、`Content-Type`、字段类型、标签长度和总请求大小。
 - 日志只记录 capture ID、状态、错误类别和耗时，不记录正文、答案、标签或凭据。
+- 不记录音频、转录正文、Typeless stdout/stderr、登录 token、设备 ID
+  或请求头。Staging 目录为 `0700`，录音文件为 `0600`。
 - 目录和数据库文件使用最小权限；异常 JSON 必须拒绝。
 
 ## 9. 失败恢复矩阵
@@ -218,6 +258,8 @@ GET /api/captures/<captureId>
 | `addNote` 后结果不明 | 写入状态待确认 | `needs_attention` | 否，避免重复 |
 | 已有 note ID | 已完成写入 | `synced` | 否 |
 | 牌组/模板永久错误 | 需要处理配置 | `needs_attention` | 否 |
+| Typeless 登录/请求失败 | 录音安全保留、需要处理 | `needs_attention` | 否；仅用户显式重试 |
+| 转录过程中服务重启 | 转录结果未知 | `needs_attention` | 否；仅用户显式重试 |
 | 服务重启 | 不改变用户状态 | 启动时恢复未完成任务 | 按状态继续 |
 
 ## 10. 验收标准
@@ -236,6 +278,11 @@ GET /api/captures/<captureId>
 10. 创建任务不会为了显示新笔记而强制刷新所有卡片和导航数据。
 11. 服务重启、请求大小和公网访问控制符合安全边界。
 12. CLI/API/单元检查通过；真实 iPhone 体验与 Capture 路由部署已由用户于 2026-08-29 验收，不使用浏览器自动化。
+
+语音扩展另需在部署后验证：真实 Typeless 登录下只上传一次、纯录音与
+手输文字顺序、Anki/Ankimo 双端播放、锁屏停止录音、后台 mTLS 文件
+上传、强杀后同 UUID 恢复，以及失败后手动重试。当前 22 个聚焦 API
+测试、聚焦 ESLint 和 TypeScript 检查通过；这些不替代真实录音验收。
 
 ## 11. 明确非目标
 
