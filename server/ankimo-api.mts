@@ -262,7 +262,15 @@ function transcribeWithTypeless(path: string): Promise<string> {
     execFile(
       process.execPath,
       [script, path],
-      { encoding: 'utf8', timeout: 70_000, maxBuffer: 128 * 1024 },
+      {
+        encoding: 'utf8',
+        timeout: 70_000,
+        maxBuffer: 128 * 1024,
+        env: {
+          ...process.env,
+          PATH: `${dirname(process.execPath)}:${process.env.PATH || '/usr/bin:/bin:/usr/sbin:/sbin'}`
+        }
+      },
       (error, stdout, stderr) => {
         if (error) {
           reject(new Error(
