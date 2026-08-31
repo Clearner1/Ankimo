@@ -17,7 +17,7 @@ export const MAX_TRUSTED_CALLS_PER_MINUTE = 20;
 export const MAX_TRUSTED_CALLS_PER_DAY = 200;
 export const MAX_JSON_BODY_BYTES = 256 * 1024;
 const MAX_CAPTURE_BODY_BYTES = 8 * 1024 * 1024;
-const MAX_CAPTURE_AUDIO_BYTES = 6 * 1024 * 1024;
+const MAX_CAPTURE_AUDIO_BYTES = 5 * 1024 * 1024;
 const MAX_IDEMPOTENCY_RECORDS = 1_000;
 const MAX_SEARCH_QUERY_LENGTH = 1_000;
 const DEFAULT_SEARCH_LIMIT = 30;
@@ -1329,7 +1329,7 @@ async function handleRequest(
       return;
     }
     try {
-      // ponytail: one bounded JSON file keeps background upload atomic; use multipart only if real recordings outgrow 6 MiB.
+      // ponytail: one bounded JSON file keeps background upload atomic; use multipart only if real recordings outgrow 5 MiB.
       const body = objectBody(await readJson(request, MAX_CAPTURE_BODY_BYTES));
       const parsed = capturePayload(body);
       const record = captures.accept(parsed);
