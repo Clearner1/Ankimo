@@ -18,6 +18,9 @@ export const MAX_TRUSTED_CALLS_PER_DAY = 200;
 export const MAX_JSON_BODY_BYTES = 256 * 1024;
 const MAX_CAPTURE_BODY_BYTES = 8 * 1024 * 1024;
 const MAX_CAPTURE_AUDIO_BYTES = 5 * 1024 * 1024;
+const MAX_CAPTURE_IMAGE_BYTES = 1_310_720;
+const MAX_CAPTURE_MEDIA_BYTES = 5 * 1024 * 1024;
+const MAX_CAPTURE_IMAGES = 4;
 const MAX_IDEMPOTENCY_RECORDS = 1_000;
 const MAX_SEARCH_QUERY_LENGTH = 1_000;
 const DEFAULT_SEARCH_LIMIT = 30;
@@ -56,6 +59,7 @@ type TrustedAccess = { record: TrustedTokenRecord | null; path?: string };
 
 type CaptureMode = 'memo' | 'qa';
 type CaptureStatus = 'queued' | 'preparing' | 'writing' | 'synced' | 'needs_attention';
+type CaptureImage = { filename: string; sha256: string };
 type CapturePayload = {
   mode: CaptureMode;
   front: string;
@@ -63,6 +67,7 @@ type CapturePayload = {
   tags: string[];
   audioFilename?: string;
   audioSha256?: string;
+  images: CaptureImage[];
 };
 type CaptureRecord = CapturePayload & {
   captureId: string;
@@ -77,7 +82,7 @@ type CaptureRecord = CapturePayload & {
   transcript: string | null;
   transcriptionStarted: boolean;
 };
-type CaptureInput = { captureId: string; payload: CapturePayload; audioData?: Buffer };
+type CaptureInput = { captureId: string; payload: CapturePayload; audioData?: Buffer; imageData: Buffer[] };
 type AudioTranscriber = (path: string) => Promise<string>;
 
 export type AnkimoApiOptions = {
@@ -303,12 +308,18 @@ function captureMediaFilename(record: CaptureRecord): string {
   return `ankimo-${record.captureId}.m4a`;
 }
 
+function captureImageMediaFilename(record: CaptureRecord, index: number): string {
+  return `ankimo-${record.captureId}-${index + 1}.jpg`;
+}
+
 function captureFrontHtml(record: CaptureRecord): string {
   const text = [record.front.trim() ? record.front : '', record.transcript || '']
     .filter(Boolean)
     .join('\n\n');
   const html = noteTextToHtml(text);
-  return record.audioFilename ? `${html}<br>[sound:${captureMediaFilename(record)}]` : html;
+  const withAudio = record.audioFilename ? `${html}<br>[sound:${captureMediaFilename(record)}]` : html;
+  const images = record.images.map((_, index) => `<img src="${captureImageMediaFilename(record, index)}" alt="" />`);
+  return images.length ? [withAudio, ...images].filter(Boolean).join('<br>') : withAudio;
 }
 
 function firstFieldValue(note: Awaited<ReturnType<ApiClient['notesInfo']>>[number]): string | null {
@@ -327,7 +338,8 @@ function capturePayloadJson(payload: CapturePayload): string {
     front: payload.front,
     back: payload.mode === 'qa' ? payload.back || '' : undefined,
     tags: payload.tags,
-    audioSha256: payload.audioSha256
+    audioSha256: payload.audioSha256,
+    images: payload.images.map(image => image.sha256)
   });
 }
 
@@ -345,6 +357,7 @@ function captureRow(row: Record<string, unknown>): CaptureRecord {
     tags: JSON.parse(String(row.tags_json)) as string[],
     ...(row.audio_filename === null ? {} : { audioFilename: String(row.audio_filename) }),
     ...(row.audio_sha256 === null ? {} : { audioSha256: String(row.audio_sha256) }),
+    images: JSON.parse(String(row.images_json || '[]')) as CaptureImage[],
     status: row.status as CaptureStatus,
     noteId: row.note_id === null ? null : Number(row.note_id),
     errorCode: row.error_code === null ? null : String(row.error_code),
@@ -387,6 +400,7 @@ class CaptureStore {
         tags_json TEXT NOT NULL,
         audio_filename TEXT,
         audio_sha256 TEXT,
+        images_json TEXT NOT NULL DEFAULT '[]',
         transcript TEXT,
         transcription_started INTEGER NOT NULL DEFAULT 0,
         status TEXT NOT NULL CHECK (status IN ('queued', 'preparing', 'writing', 'synced', 'needs_attention')),
@@ -404,6 +418,7 @@ class CaptureStore {
     );
     if (!columns.has('audio_filename')) this.db.exec('ALTER TABLE captures ADD COLUMN audio_filename TEXT');
     if (!columns.has('audio_sha256')) this.db.exec('ALTER TABLE captures ADD COLUMN audio_sha256 TEXT');
+    if (!columns.has('images_json')) this.db.exec("ALTER TABLE captures ADD COLUMN images_json TEXT NOT NULL DEFAULT '[]'");
     if (!columns.has('transcript')) this.db.exec('ALTER TABLE captures ADD COLUMN transcript TEXT');
     if (!columns.has('transcription_started')) {
       this.db.exec('ALTER TABLE captures ADD COLUMN transcription_started INTEGER NOT NULL DEFAULT 0');
@@ -428,7 +443,7 @@ class CaptureStore {
       this.db.prepare(`
         UPDATE captures
         SET status = 'queued', next_attempt_at = ?, error_code = 'READBACK_PENDING', updated_at = ?
-        WHERE status = 'writing' AND note_id IS NOT NULL AND audio_filename IS NOT NULL
+        WHERE status = 'writing' AND note_id IS NOT NULL AND (audio_filename IS NOT NULL OR images_json != '[]')
       `).run(currentTime, currentTime);
       this.db.prepare(`
         UPDATE captures
@@ -447,7 +462,7 @@ class CaptureStore {
     return row ? captureRow(row) : null;
   }
 
-  accept({ captureId, payload, audioData }: CaptureInput): CaptureRecord {
+  accept({ captureId, payload, audioData, imageData }: CaptureInput): CaptureRecord {
     const fingerprint = captureFingerprint(payload);
     const currentTime = this.now();
     this.db.exec('BEGIN IMMEDIATE');
@@ -471,12 +486,22 @@ class CaptureStore {
         renameSync(temporaryPath, path);
         chmodSync(path, 0o600);
       }
+      if (payload.images.length !== imageData.length) throw new HttpError(400, 'INVALID_IMAGE', '图片内容无效');
+      payload.images.forEach((image, index) => {
+        const data = imageData[index];
+        if (!data || hash(data) !== image.sha256) throw new HttpError(400, 'INVALID_IMAGE', '图片内容无效');
+        const path = this.imagePath(image.filename);
+        const temporaryPath = `${path}.${randomBytes(6).toString('hex')}.tmp`;
+        writeFileSync(temporaryPath, data, { mode: 0o600 });
+        renameSync(temporaryPath, path);
+        chmodSync(path, 0o600);
+      });
       this.db.prepare(`
         INSERT INTO captures (
           capture_id, fingerprint, mode, front, back, tags_json, audio_filename,
-          audio_sha256, transcript, transcription_started, status, note_id,
+          audio_sha256, images_json, transcript, transcription_started, status, note_id,
           error_code, attempt_count, next_attempt_at, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, 'queued', NULL, NULL, 0, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, 'queued', NULL, NULL, 0, ?, ?, ?)
       `).run(
         captureId,
         fingerprint,
@@ -486,6 +511,7 @@ class CaptureStore {
         JSON.stringify(payload.tags),
         payload.audioFilename ?? null,
         payload.audioSha256 ?? null,
+        JSON.stringify(payload.images),
         currentTime,
         currentTime,
         currentTime
@@ -503,6 +529,13 @@ class CaptureStore {
   audioPath(filename: string): string {
     if (!this.mediaPath || !/^[0-9a-f-]{36}\.m4a$/i.test(filename)) {
       throw new HttpError(500, 'AUDIO_STORE_UNAVAILABLE', '录音存储不可用');
+    }
+    return join(this.mediaPath, filename);
+  }
+
+  imagePath(filename: string): string {
+    if (!this.mediaPath || !/^[0-9a-f-]{36}-[1-4]\.jpg$/i.test(filename)) {
+      throw new HttpError(500, 'IMAGE_STORE_UNAVAILABLE', '图片存储不可用');
     }
     return join(this.mediaPath, filename);
   }
@@ -614,12 +647,22 @@ class CaptureStore {
     }
   }
 
+  removeImages(record: CaptureRecord): void {
+    for (const image of record.images) {
+      try {
+        unlinkSync(this.imagePath(image.filename));
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      }
+    }
+  }
+
   markSynced(captureId: string, noteId: number): void {
     this.db.prepare(`
       UPDATE captures
       SET status = 'synced', note_id = ?, error_code = NULL,
           front = '', back = NULL, tags_json = '[]', audio_filename = NULL,
-          audio_sha256 = NULL, transcript = NULL, transcription_started = 0,
+          audio_sha256 = NULL, images_json = '[]', transcript = NULL, transcription_started = 0,
           updated_at = ?
       WHERE capture_id = ?
     `).run(noteId, this.now(), captureId);
@@ -746,9 +789,10 @@ class CaptureWorker {
       if (current.audioFilename && !current.transcript) {
         throw new PermanentCaptureError('TYPELESS_INVALID_RESULT');
       }
-      if (current.audioFilename && current.noteId !== null) {
-        await this.confirmAudioNote(current, current.noteId);
+      if ((current.audioFilename || current.images.length) && current.noteId !== null) {
+        await this.confirmMediaNote(current, current.noteId);
         this.store.removeAudio(current);
+        this.store.removeImages(current);
         this.store.markSynced(current.captureId, current.noteId);
         return;
       }
@@ -782,6 +826,20 @@ class CaptureWorker {
         }
         if (stored !== filename) throw new PermanentCaptureError('MEDIA_WRITE_FAILED');
       }
+      for (const [index, image] of current.images.entries()) {
+        const filename = captureImageMediaFilename(current, index);
+        let stored: string | false | null;
+        try {
+          stored = await this.client.storeMediaFileBase64(
+            filename,
+            readFileSync(this.store.imagePath(image.filename)).toString('base64')
+          );
+        } catch (error) {
+          if (error instanceof AnkiConnectActionError) throw new PermanentCaptureError('MEDIA_WRITE_FAILED');
+          throw error;
+        }
+        if (stored !== filename) throw new PermanentCaptureError('MEDIA_WRITE_FAILED');
+      }
       if (this.closed) return;
       this.store.update(current.captureId, { status: 'writing' });
       const noteId = await this.client.addNote(
@@ -801,10 +859,11 @@ class CaptureWorker {
         return;
       }
       this.store.update(current.captureId, { status: 'writing', noteId });
-      if (current.audioFilename) {
+      if (current.audioFilename || current.images.length) {
         current = this.store.get(current.captureId) || { ...current, noteId };
-        await this.confirmAudioNote(current, noteId);
+        await this.confirmMediaNote(current, noteId);
         this.store.removeAudio(current);
+        this.store.removeImages(current);
       }
       this.store.markSynced(current.captureId, noteId);
     } catch (error) {
@@ -814,7 +873,7 @@ class CaptureWorker {
         return;
       }
       const latest = this.store.get(record.captureId);
-      if (latest?.status === 'writing' && latest.audioFilename && latest.noteId !== null) {
+      if (latest?.status === 'writing' && (latest.audioFilename || latest.images.length) && latest.noteId !== null) {
         const delays = this.retryDelaysMs.length ? this.retryDelaysMs : CAPTURE_RETRY_DELAYS_MS;
         this.store.update(record.captureId, {
           status: 'queued',
@@ -837,7 +896,7 @@ class CaptureWorker {
     }
   }
 
-  private async confirmAudioNote(record: CaptureRecord, noteId: number): Promise<void> {
+  private async confirmMediaNote(record: CaptureRecord, noteId: number): Promise<void> {
     const note = (await this.client.notesInfo([noteId]))[0];
     if (!note || firstFieldValue(note) !== captureFrontHtml(record)) {
       throw new PermanentCaptureError('READBACK_MISMATCH');
@@ -1014,7 +1073,7 @@ function hasVerifiedCaptureClient(request: IncomingMessage): boolean {
 }
 
 function capturePayload(body: JsonObject): CaptureInput {
-  onlyFields(body, ['captureId', 'mode', 'front', 'back', 'tags', 'audio']);
+  onlyFields(body, ['captureId', 'mode', 'front', 'back', 'tags', 'audio', 'images']);
   const captureId = body.captureId;
   if (typeof captureId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(captureId)) {
     throw new HttpError(400, 'INVALID_INPUT', 'captureId 必须是 UUID');
@@ -1042,9 +1101,32 @@ function capturePayload(body: JsonObject): CaptureInput {
     audioFilename = `${normalizedCaptureId}.m4a`;
     audioSha256 = hash(audioData);
   }
+  const rawImages = body.images === undefined ? [] : body.images;
+  if (!Array.isArray(rawImages) || rawImages.length > MAX_CAPTURE_IMAGES) {
+    throw new HttpError(400, 'INVALID_IMAGE', `图片最多 ${MAX_CAPTURE_IMAGES} 张`);
+  }
+  if (mode !== 'memo' && rawImages.length) throw new HttpError(400, 'INVALID_INPUT', '图片只支持 memo 模式');
+  const imageData = rawImages.map((value, index) => {
+    const image = objectBody(value);
+    onlyFields(image, ['format', 'data']);
+    if (image.format !== 'jpg' || typeof image.data !== 'string' || !image.data.length ||
+        image.data.length > Math.ceil(MAX_CAPTURE_IMAGE_BYTES * 4 / 3) + 4 ||
+        !/^[A-Za-z0-9+/]+={0,2}$/.test(image.data)) {
+      throw new HttpError(400, 'INVALID_IMAGE', '图片必须是有效的 JPEG Base64 数据');
+    }
+    const data = Buffer.from(image.data, 'base64');
+    if (!data.length || data.length > MAX_CAPTURE_IMAGE_BYTES ||
+        data[0] !== 0xff || data[1] !== 0xd8 || data[data.length - 2] !== 0xff || data[data.length - 1] !== 0xd9 ||
+        data.toString('base64').replace(/=+$/, '') !== image.data.replace(/=+$/, '')) {
+      throw new HttpError(400, 'INVALID_IMAGE', '图片必须是有效的 JPEG Base64 数据');
+    }
+    return { data, filename: `${normalizedCaptureId}-${index + 1}.jpg`, sha256: hash(data) };
+  });
+  const mediaBytes = (audioData?.length || 0) + imageData.reduce((total, image) => total + image.data.length, 0);
+  if (mediaBytes > MAX_CAPTURE_MEDIA_BYTES) throw new HttpError(400, 'INVALID_MEDIA', '录音和图片合计不能超过 5 MiB');
   const rawFront = body.front;
-  if (typeof rawFront !== 'string' || rawFront.length > 50_000 || (!rawFront.trim() && !audioData)) {
-    throw new HttpError(400, 'INVALID_INPUT', 'front 必须是非空文本，纯录音时可以为空');
+  if (typeof rawFront !== 'string' || rawFront.length > 50_000 || (!rawFront.trim() && !audioData && !imageData.length)) {
+    throw new HttpError(400, 'INVALID_INPUT', 'front 必须是非空文本，纯录音或纯图片时可以为空');
   }
   const front = rawFront;
   const rawBack = body.back;
@@ -1062,9 +1144,11 @@ function capturePayload(body: JsonObject): CaptureInput {
       front,
       ...(mode === 'qa' ? { back: back || '' } : {}),
       tags,
-      ...(audioFilename ? { audioFilename, audioSha256 } : {})
+      ...(audioFilename ? { audioFilename, audioSha256 } : {}),
+      images: imageData.map(image => ({ filename: image.filename, sha256: image.sha256 }))
     },
-    ...(audioData ? { audioData } : {})
+    ...(audioData ? { audioData } : {}),
+    imageData: imageData.map(image => image.data)
   };
 }
 

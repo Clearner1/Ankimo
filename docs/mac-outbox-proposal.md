@@ -102,7 +102,12 @@ Mac 在线但 Anki 未打开时，命令仍可进入 `queued`，随后自动重�
 
 ### 3.2 图片文件
 
-当前 native Capture 合同不接受图片；不创建媒体目录、不把图片塞入 SQLite，也不为未提出的图片需求引入上传协议。
+图片短笔记复用语音已建立的私有 staging 目录和 JSON Capture 请求。SQLite
+只保存按顺序排列的相对文件名与 SHA-256，不保存 Base64。每条 memo 最多
+4 张 JPEG，单张不超过 1.25 MiB；录音与图片解码后合计不超过 5 MiB。
+worker 使用 `ankimo-<captureId>-<序号>.jpg` 写入 Anki media，并把图片
+引用按顺序追加到 `引用` 字段末尾。媒体与字段精确回读完成后才删除
+iPhone/Mac staging 文件并报告 `synced`。
 
 ### 3.3 生命周期清理
 
@@ -189,6 +194,20 @@ Content-Type: application/json
 音频只允许 memo、M4A 和单文件。原始 M4A 上限为 5 MiB；包含 Base64
 的完整 Capture JSON 上限为 8 MiB。纯文字接口仍沿用 256 KiB 上限。
 
+图片 memo 可让 `front` 为空，并增加：
+
+```json
+{
+  "images": [
+    { "format": "jpg", "data": "base64-encoded-jpeg" }
+  ]
+}
+```
+
+图片只允许 memo 和 JPEG，最多 4 张、单张不超过 1.25 MiB；图片与录音
+合计不超过 5 MiB。图片顺序和内容摘要进入 capture fingerprint，因此
+同 UUID 改变图片或顺序会返回 `409`。
+
 成功写入 Outbox 后返回：
 
 ```http
@@ -217,7 +236,9 @@ GET /api/captures/<captureId>
 
 ## 6. 图片、请求大小与性能
 
-纯文字请求在 SQLite commit 后快速返回，不等待 Anki 的网络反馈。当前请求沿用既有 `256 KiB` JSON 上限；图片不在 Capture 合同内。
+纯文字请求在 SQLite commit 后快速返回，不等待 Anki 的网络反馈。Capture
+媒体继续使用有界 JSON：完整请求上限 8 MiB，录音与图片解码后合计上限
+5 MiB。只有真实媒体超过这个边界时才考虑 multipart 或分块上传。
 
 语音扩展使用一个有界 JSON 上传文件是第一版的刻意简化：典型录音约
 30 秒，iOS 端上限五分钟。只有真实录音超过当前 5 MiB 上限时才改为
@@ -279,16 +300,21 @@ multipart 或分块上传，不提前引入上传依赖。
 11. 服务重启、请求大小和公网访问控制符合安全边界。
 12. CLI/API/单元检查通过；真实 iPhone 体验与 Capture 路由部署已由用户于 2026-08-29 验收，不使用浏览器自动化。
 
+图片扩展另需验证相册多选、拍照、纯图片、图文混合、离线/强杀后同
+UUID 恢复，以及 Anki 与 iOS 详情页中的顺序和清晰度；自动化检查不替代
+真实相机与设备验收。
+
 语音扩展另需在部署后验证：真实 Typeless 登录下只上传一次、纯录音与
 手输文字顺序、Anki/Ankimo 双端播放、锁屏停止录音、后台 mTLS 文件
-上传、强杀后同 UUID 恢复，以及失败后手动重试。当前 22 个聚焦 API
+上传、强杀后同 UUID 恢复，以及失败后手动重试。当前 23 个聚焦 API
 测试、聚焦 ESLint 和 TypeScript 检查通过；这些不替代真实录音验收。
 
 ## 11. 明确非目标
 
 本提案第一版明确不做：
 
-- 不做图片 Capture、编辑、删除、批量操作或复习操作的异步队列；先只解决文字创建。
+- 不做图片编辑、远程删除、批量操作或复习操作的异步队列；图片 Capture
+  只覆盖最多四张短笔记附件。
 - Mac 端不建立完整 iPhone 离线数据库、Service Worker 或长期浏览器缓存；原生 iOS 仅负责保存待同步 capture。
 - 不复制完整 Anki collection，不替代 Anki，不做双向同步。
 - 不做冲突解决、跨设备合并或多用户队列。

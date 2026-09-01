@@ -657,6 +657,65 @@ describe('Ankimo HTTP API', () => {
     expect(transcriptions).toBe(1);
   });
 
+  it('stores up to four memo images in order and keeps image capture idempotent', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ankimo-image-capture-test-'));
+    tempDirs.push(dir);
+    const captureId = '00000000-0000-4000-8000-00000000000e';
+    const first = Buffer.from([0xff, 0xd8, 1, 0xff, 0xd9]);
+    const second = Buffer.from([0xff, 0xd8, 2, 0xff, 0xd9]);
+    const stored: string[] = [];
+    let fields: Record<string, string> = {};
+    const base = await start({
+      outboxPath: join(dir, 'outbox.sqlite3'),
+      captureMediaPath: join(dir, 'media'),
+      client: fakeAnki({
+        deckNames: async () => ['Ankimo'],
+        storeMediaFileBase64: async (filename, data) => {
+          stored.push(`${filename}:${Buffer.from(data, 'base64')[2]}`);
+          return filename;
+        },
+        addNote: async (_deck, _model, values) => {
+          fields = values;
+          return 912;
+        },
+        notesInfo: async () => [{
+          noteId: 912,
+          fields: { 引用: { value: fields['引用'] || '', order: 0 } },
+          tags: []
+        }]
+      })
+    });
+    const body = {
+      captureId,
+      mode: 'memo',
+      front: '',
+      tags: [],
+      images: [first, second].map(data => ({ format: 'jpg', data: data.toString('base64') }))
+    };
+
+    expect((await capture(base, '', body)).response.status).toBe(202);
+    expect(await waitForCaptureStatus(base, '', captureId, 'synced')).toMatchObject({ noteId: 912 });
+    expect(stored).toEqual([
+      `ankimo-${captureId}-1.jpg:1`,
+      `ankimo-${captureId}-2.jpg:2`
+    ]);
+    expect(fields['引用']).toBe(
+      `<img src="ankimo-${captureId}-1.jpg" alt="" /><br><img src="ankimo-${captureId}-2.jpg" alt="" />`
+    );
+    expect(existsSync(join(dir, 'media', `${captureId}-1.jpg`))).toBe(false);
+    expect((await capture(base, '', body)).body).toMatchObject({ status: 'synced', noteId: 912 });
+    expect((await capture(base, '', {
+      ...body,
+      images: [{ format: 'jpg', data: second.toString('base64') }]
+    })).response.status).toBe(409);
+
+    const rejected = await capture(base, '', {
+      captureId: '00000000-0000-4000-8000-00000000000f',
+      mode: 'qa', front: '问题', back: '答案', tags: [], images: body.images
+    });
+    expect(rejected.response.status).toBe(400);
+  });
+
   it('never retries an ambiguous transcription until the user asks', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'ankimo-audio-retry-test-'));
     tempDirs.push(dir);

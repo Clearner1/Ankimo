@@ -43,6 +43,13 @@ not a browser note store and does not change existing `/v1` or AnkiConnect
 contracts. After sync, the row keeps only a fingerprint/note-ID tombstone; the
 capture text and tags are cleared.
 
+Short-note captures may include up to four bounded JPEG images. They reuse the
+same JSON request, private staging directory, SQLite worker, deterministic
+Anki media names, and capture fingerprint as voice media; no second upload
+service or browser contract is introduced. The worker appends image references
+to the memo's first field and requires exact note read-back before removing the
+staging files and reporting `synced`.
+
 The Capture route is `https://ankimo.yzr-stack.top/api/captures`, reusing the
 real-iPhone-proven client-certificate host rather than the existing Bearer
 middleware, and requires the
@@ -56,8 +63,8 @@ and force-quit recovery on 2026-08-29. The CLI stores the database at
 `~/Library/Application Support/Ankimo/outbox.sqlite3`;
 tests use an in-memory or injected temporary database.
 
-The optional voice-memo extension is implemented on `feature/voice-capture`
-at `135e109` but is not integrated or deployed. It keeps `mode: memo`, accepts
+The optional voice-memo extension is integrated and deployed on `main` at
+`018e9f4`. It keeps `mode: memo`, accepts
 one bounded M4A in the existing request, invokes the installed Mac
 `typeless-transcribe` CLI once, stores the recording through AnkiConnect, and
 writes manual text, transcript, and `[sound:...]` into the existing first
