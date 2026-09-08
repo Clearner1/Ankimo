@@ -53,6 +53,9 @@ mkdir -p "$launch_agents_dir" "$log_dir" "$runtime_dir/server" "$runtime_dir/src
 cp "$source_api_script" "$runtime_dir/server/ankimo-api.mts"
 cp "$source_anki_client" "$runtime_dir/src/api/ankiConnect.ts"
 cp "$source_note_writer" "$runtime_dir/src/domain/noteWriting.ts"
+cp "$live_dir/server/local-asr.mts" "$runtime_dir/server/local-asr.mts"
+cp "$live_dir/server/local-asr.py" "$runtime_dir/server/local-asr.py"
+chmod 600 "$runtime_dir/server/local-asr.mts" "$runtime_dir/server/local-asr.py"
 chmod 600 "$runtime_dir/server/ankimo-api.mts" "$runtime_dir/src/api/ankiConnect.ts" "$runtime_dir/src/domain/noteWriting.ts"
 tmp_plist="$(mktemp "${TMPDIR:-/tmp}/$label.XXXXXX")"
 cleanup() {
