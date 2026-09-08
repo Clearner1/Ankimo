@@ -1,3 +1,4 @@
+import { createLocalTranscriber } from './local-asr.mts';
 import { createHash, randomBytes } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { chmodSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
@@ -260,39 +261,6 @@ function sendJson(response: ServerResponse, result: JsonResponse): void {
 
 function hash(value: string | Buffer): string {
   return createHash('sha256').update(value).digest('hex');
-}
-
-function transcribeWithTypeless(path: string): Promise<string> {
-  const script = join(homedir(), '.codex', 'skills', 'typeless-transcribe', 'scripts', 'transcribe.js');
-  return new Promise((resolve, reject) => {
-    execFile(
-      process.execPath,
-      [script, path],
-      {
-        encoding: 'utf8',
-        timeout: 70_000,
-        maxBuffer: 128 * 1024,
-        env: {
-          ...process.env,
-          PATH: `${dirname(process.execPath)}:${process.env.PATH || '/usr/bin:/bin:/usr/sbin:/sbin'}`
-        }
-      },
-      (error, stdout, stderr) => {
-        if (error) {
-          reject(new Error(
-            /login|account configuration/i.test(stderr) ? 'TYPELESS_LOGIN_REQUIRED' : 'TYPELESS_FAILED'
-          ));
-          return;
-        }
-        const text = stdout.trim();
-        if (!text || text.length > 50_000) {
-          reject(new Error('TYPELESS_INVALID_RESULT'));
-          return;
-        }
-        resolve(text);
-      }
-    );
-  });
 }
 
 function encodeAudioForAnki(path: string): Promise<Buffer> {
@@ -1552,12 +1520,13 @@ export function createAnkimoApiServer(options: AnkimoApiOptions = {}): Server {
   const connections = new Map<string, ConnectionRecord>();
   const now = options.now || Date.now;
   const captures = new CaptureStore(options.outboxPath || ':memory:', options.captureMediaPath || null, now);
+  const localTranscriber = options.transcribeAudio ? null : createLocalTranscriber();
   const captureWorker = new CaptureWorker(
     captures,
     client,
     now,
     options.captureRetryDelaysMs || CAPTURE_RETRY_DELAYS_MS,
-    options.transcribeAudio || transcribeWithTypeless,
+    options.transcribeAudio || localTranscriber!.transcribe,
     options.encodeAudio || encodeAudioForAnki
   );
   const trusted: TrustedAccess = {
@@ -1569,6 +1538,7 @@ export function createAnkimoApiServer(options: AnkimoApiOptions = {}): Server {
   });
   server.once('close', () => {
     captureWorker.close();
+    localTranscriber?.close();
     captures.close();
   });
   return server;
