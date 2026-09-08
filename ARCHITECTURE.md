@@ -129,3 +129,31 @@ staging and reports `AUDIO_CONVERSION_FAILED` before note creation.
 Read-back accepts both the new exact field and the prior exact sound-tag
 field so an upgrade can finish an already-written capture without duplication.
 iOS must support both formats before publishing these new notes.
+
+### Local voice transcription (2026-09-09)
+
+Typeless is replaced by local Qwen3-ASR 0.6B 8-bit, superseding the private
+Typeless runtime described above. The M4 benchmark favored this model plus
+fixed vocabulary hints (Ankimo, Anki, Typeless, 微信读书, skill).
+The existing serial Capture worker owns one lazy, reusable Python subprocess
+over stdin/stdout; no HTTP inference service, new queue, or cloud fallback is
+introduced. A timeout/crash kills that process and leaves the capture at
+needs_attention; an explicit later retry can start a fresh process.
+No recording is sent to Typeless or another remote transcription provider.
+
+Run scripts/install-local-asr.sh once to provision the app-owned Python 3.12
+environment and pinned Qwen weights under Application Support/Ankimo/asr.
+mlx-audio is pinned to 0.5.3; model revision is
+89e96d92ba34aca20b3e29fb10cc284097d1219f. Runtime loads this local directory
+with HF/Transformers offline mode. The capture path and file size are
+validated; decoded audio longer than the existing five-minute limit is
+rejected. Transcription is bounded to 4096 tokens and 70 seconds; incomplete
+or empty results preserve the recording rather than creating a partial note.
+Library stderr is drained without persisting user content.
+
+The legacy TYPELESS_* wire error names remain for compatibility with already
+installed iPhones and old failed rows. They now describe local transcription
+failure, not a Typeless request. Manual retry, same UUID, unknown-write
+handling, MP3 controls, and exact Anki read-back remain unchanged.
+The iOS label update is cosmetic and can be installed in the morning; the
+current phone can use the new Mac backend immediately.

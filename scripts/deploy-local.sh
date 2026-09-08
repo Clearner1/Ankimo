@@ -92,6 +92,9 @@ mkdir -p "$api_runtime_dir/server" "$api_runtime_dir/src/api" "$api_runtime_dir/
 cp "$live_dir/server/ankimo-api.mts" "$api_runtime_dir/server/ankimo-api.mts"
 cp "$live_dir/src/api/ankiConnect.ts" "$api_runtime_dir/src/api/ankiConnect.ts"
 cp "$live_dir/src/domain/noteWriting.ts" "$api_runtime_dir/src/domain/noteWriting.ts"
+cp "$live_dir/server/local-asr.mts" "$api_runtime_dir/server/local-asr.mts"
+cp "$live_dir/server/local-asr.py" "$api_runtime_dir/server/local-asr.py"
+chmod 600 "$api_runtime_dir/server/local-asr.mts" "$api_runtime_dir/server/local-asr.py"
 chmod 600 "$api_runtime_dir/server/ankimo-api.mts" "$api_runtime_dir/src/api/ankiConnect.ts" "$api_runtime_dir/src/domain/noteWriting.ts"
 api_service_installed=false
 if command -v launchctl >/dev/null 2>&1 && launchctl print "$api_service_target" >/dev/null 2>&1; then
