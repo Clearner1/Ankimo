@@ -94,6 +94,7 @@ export type AnkimoApiOptions = {
   captureMediaPath?: string;
   captureRetryDelaysMs?: readonly number[];
   transcribeAudio?: AudioTranscriber;
+  encodeAudio?: (path: string) => Promise<Buffer>;
 };
 
 class HttpError extends Error {
@@ -294,6 +295,24 @@ function transcribeWithTypeless(path: string): Promise<string> {
   });
 }
 
+function encodeAudioForAnki(path: string): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    execFile('ffmpeg', [
+      '-nostdin', '-v', 'error', '-i', path, '-map', '0:a:0',
+      '-vn', '-map_metadata', '-1', '-ac', '1', '-c:a', 'libmp3lame',
+      '-b:a', '64k', '-f', 'mp3', 'pipe:1'
+    ], {
+      encoding: 'buffer',
+      timeout: 70_000,
+      maxBuffer: MAX_CAPTURE_AUDIO_BYTES,
+      env: { ...process.env, PATH: `/opt/homebrew/bin:/usr/local/bin:${process.env.PATH || '/usr/bin:/bin'}` }
+    }, (error, stdout) => {
+      if (error || !stdout.length) reject(new PermanentCaptureError('AUDIO_CONVERSION_FAILED'));
+      else resolve(stdout);
+    });
+  });
+}
+
 function isDatabaseBusy(error: unknown): boolean {
   if (!error || typeof error !== 'object') return false;
   const candidate = error as { code?: unknown; errcode?: unknown; errstr?: unknown };
@@ -305,19 +324,22 @@ function captureModel(mode: CaptureMode): string {
 }
 
 function captureMediaFilename(record: CaptureRecord): string {
-  return `ankimo-${record.captureId}.m4a`;
+  return `ankimo-${record.captureId}.mp3`;
 }
 
 function captureImageMediaFilename(record: CaptureRecord, index: number): string {
   return `ankimo-${record.captureId}-${index + 1}.jpg`;
 }
 
-function captureFrontHtml(record: CaptureRecord): string {
+function captureFrontHtml(record: CaptureRecord, legacyAudio = false): string {
   const text = [record.front.trim() ? record.front : '', record.transcript || '']
     .filter(Boolean)
     .join('\n\n');
   const html = noteTextToHtml(text);
-  const withAudio = record.audioFilename ? `${html}<br>[sound:${captureMediaFilename(record)}]` : html;
+  const audio = legacyAudio
+    ? `[sound:ankimo-${record.captureId}.m4a]`
+    : `<audio controls preload="metadata" src="${captureMediaFilename(record)}"></audio>`;
+  const withAudio = record.audioFilename ? `${html}<br>${audio}` : html;
   const images = record.images.map((_, index) => `<img src="${captureImageMediaFilename(record, index)}" alt="" />`);
   return images.length ? [withAudio, ...images].filter(Boolean).join('<br>') : withAudio;
 }
@@ -691,19 +713,22 @@ class CaptureWorker {
   private readonly now: () => number;
   private readonly retryDelaysMs: readonly number[];
   private readonly transcribeAudio: AudioTranscriber;
+  private readonly encodeAudio: (path: string) => Promise<Buffer>;
 
   constructor(
     store: CaptureStore,
     client: ApiClient,
     now: () => number,
     retryDelaysMs: readonly number[],
-    transcribeAudio: AudioTranscriber
+    transcribeAudio: AudioTranscriber,
+    encodeAudio: (path: string) => Promise<Buffer>
   ) {
     this.store = store;
     this.client = client;
     this.now = now;
     this.retryDelaysMs = retryDelaysMs;
     this.transcribeAudio = transcribeAudio;
+    this.encodeAudio = encodeAudio;
     this.wake();
   }
 
@@ -818,7 +843,7 @@ class CaptureWorker {
         try {
           stored = await this.client.storeMediaFileBase64(
             filename,
-            readFileSync(this.store.audioPath(current.audioFilename)).toString('base64')
+            (await this.encodeAudio(this.store.audioPath(current.audioFilename))).toString('base64')
           );
         } catch (error) {
           if (error instanceof AnkiConnectActionError) throw new PermanentCaptureError('MEDIA_WRITE_FAILED');
@@ -898,7 +923,8 @@ class CaptureWorker {
 
   private async confirmMediaNote(record: CaptureRecord, noteId: number): Promise<void> {
     const note = (await this.client.notesInfo([noteId]))[0];
-    if (!note || firstFieldValue(note) !== captureFrontHtml(record)) {
+    // An upgrade may resume read-back of a note written with the previous audio format.
+    if (!note || ![captureFrontHtml(record), captureFrontHtml(record, true)].includes(firstFieldValue(note) ?? '')) {
       throw new PermanentCaptureError('READBACK_MISMATCH');
     }
   }
@@ -1531,7 +1557,8 @@ export function createAnkimoApiServer(options: AnkimoApiOptions = {}): Server {
     client,
     now,
     options.captureRetryDelaysMs || CAPTURE_RETRY_DELAYS_MS,
-    options.transcribeAudio || transcribeWithTypeless
+    options.transcribeAudio || transcribeWithTypeless,
+    options.encodeAudio || encodeAudioForAnki
   );
   const trusted: TrustedAccess = {
     record: loadTrustedToken(options.trustedTokenPath, now()),
