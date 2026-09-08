@@ -606,12 +606,17 @@ describe('Ankimo HTTP API', () => {
     tempDirs.push(dir);
     const captureId = '00000000-0000-4000-8000-00000000000b';
     const audio = Buffer.from('small fake m4a');
+    const mp3 = Buffer.from('converted mp3');
     let transcriptions = 0;
     let storedMedia = '';
     let fields: Record<string, string> = {};
     const base = await start({
       outboxPath: join(dir, 'outbox.sqlite3'),
       captureMediaPath: join(dir, 'audio'),
+      encodeAudio: async path => {
+        expect(readFileSync(path)).toEqual(audio);
+        return mp3;
+      },
       transcribeAudio: async path => {
         transcriptions += 1;
         expect(existsSync(path)).toBe(true);
@@ -621,7 +626,7 @@ describe('Ankimo HTTP API', () => {
         deckNames: async () => ['Ankimo'],
         storeMediaFileBase64: async (filename, data) => {
           storedMedia = filename;
-          expect(Buffer.from(data, 'base64')).toEqual(audio);
+          expect(Buffer.from(data, 'base64')).toEqual(mp3);
           return filename;
         },
         addNote: async (_deck, _model, values) => {
@@ -647,14 +652,38 @@ describe('Ankimo HTTP API', () => {
     const synced = await waitForCaptureStatus(base, '', captureId, 'synced');
     expect(synced).toMatchObject({ noteId: 910, status: 'synced' });
     expect(transcriptions).toBe(1);
-    expect(storedMedia).toBe(`ankimo-${captureId}.m4a`);
+    expect(storedMedia).toBe(`ankimo-${captureId}.mp3`);
     expect(fields['引用']).toContain('手输文字');
     expect(fields['引用']).toContain('转录文字');
-    expect(fields['引用']).toContain(`[sound:ankimo-${captureId}.m4a]`);
+    expect(fields['引用']).toContain(`<audio controls preload="metadata" src="ankimo-${captureId}.mp3"></audio>`);
+    expect(fields['引用']).not.toContain('[sound:');
     expect(existsSync(join(dir, 'audio', `${captureId}.m4a`))).toBe(false);
 
     expect((await capture(base, '', body)).body).toMatchObject({ status: 'synced', noteId: 910 });
     expect(transcriptions).toBe(1);
+  });
+
+  it('preserves the recording and creates no note when audio conversion fails', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ankimo-audio-invalid-test-'));
+    tempDirs.push(dir);
+    const captureId = '00000000-0000-4000-8000-00000000001b';
+    let writes = 0;
+    const base = await start({
+      captureMediaPath: join(dir, 'audio'),
+      transcribeAudio: async () => 'transcript',
+      client: fakeAnki({
+        deckNames: async () => ['Ankimo'],
+        addNote: async () => { writes += 1; return 999; }
+      })
+    });
+    await capture(base, '', {
+      captureId, mode: 'memo', front: '', tags: [],
+      audio: { format: 'm4a', data: Buffer.from('invalid audio').toString('base64') }
+    });
+    expect(await waitForCaptureStatus(base, '', captureId, 'needs_attention'))
+      .toMatchObject({ errorCode: 'AUDIO_CONVERSION_FAILED' });
+    expect(writes).toBe(0);
+    expect(readFileSync(join(dir, 'audio', `${captureId}.m4a`))).toEqual(Buffer.from('invalid audio'));
   });
 
   it('stores up to four memo images in order and keeps image capture idempotent', async () => {
@@ -725,6 +754,7 @@ describe('Ankimo HTTP API', () => {
     const base = await start({
       outboxPath: join(dir, 'outbox.sqlite3'),
       captureMediaPath: join(dir, 'audio'),
+      encodeAudio: async () => Buffer.from('mp3'),
       transcribeAudio: async () => {
         attempts += 1;
         if (attempts === 1) throw new Error('ambiguous timeout');

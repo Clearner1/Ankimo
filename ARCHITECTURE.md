@@ -116,3 +116,16 @@ Revisit an extension boundary only after a second real consumer needs the same
 seam. The second consumer must be concrete, not a speculative future use;
 document the repeated contract and add one focused test before introducing
 the abstraction.
+
+### Audio controls (2026-09-09)
+
+New voice captures keep the M4A upload contract, but the Mac worker converts
+the recording with the installed ffmpeg to bounded mono 64 kbps MP3 before
+Anki media storage. The local Anki Qt 6.9 web engine reports no AAC/M4A support
+and supports MP3, so an HTML control around the original M4A is insufficient.
+New first fields use `<audio controls preload="metadata" src="ankimo-UUID.mp3"></audio>`.
+No template or extra Anki field is required. Conversion failure preserves
+staging and reports `AUDIO_CONVERSION_FAILED` before note creation.
+Read-back accepts both the new exact field and the prior exact sound-tag
+field so an upgrade can finish an already-written capture without duplication.
+iOS must support both formats before publishing these new notes.
