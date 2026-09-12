@@ -17,11 +17,11 @@ export const MAX_TOKEN_CALLS = 100;
 export const MAX_TRUSTED_CALLS_PER_MINUTE = 20;
 export const MAX_TRUSTED_CALLS_PER_DAY = 200;
 export const MAX_JSON_BODY_BYTES = 256 * 1024;
-const MAX_CAPTURE_BODY_BYTES = 8 * 1024 * 1024;
+const MAX_CAPTURE_BODY_BYTES = 24 * 1024 * 1024;
 const MAX_CAPTURE_AUDIO_BYTES = 5 * 1024 * 1024;
 const MAX_CAPTURE_IMAGE_BYTES = 1_310_720;
-const MAX_CAPTURE_MEDIA_BYTES = 5 * 1024 * 1024;
-const MAX_CAPTURE_IMAGES = 4;
+const MAX_CAPTURE_IMAGES = 9;
+const MAX_CAPTURE_MEDIA_BYTES = MAX_CAPTURE_IMAGES * MAX_CAPTURE_IMAGE_BYTES + MAX_CAPTURE_AUDIO_BYTES;
 const MAX_IDEMPOTENCY_RECORDS = 1_000;
 const MAX_SEARCH_QUERY_LENGTH = 1_000;
 const DEFAULT_SEARCH_LIMIT = 30;
@@ -1117,7 +1117,7 @@ function capturePayload(body: JsonObject): CaptureInput {
     return { data, filename: `${normalizedCaptureId}-${index + 1}.jpg`, sha256: hash(data) };
   });
   const mediaBytes = (audioData?.length || 0) + imageData.reduce((total, image) => total + image.data.length, 0);
-  if (mediaBytes > MAX_CAPTURE_MEDIA_BYTES) throw new HttpError(400, 'INVALID_MEDIA', '录音和图片合计不能超过 5 MiB');
+  if (mediaBytes > MAX_CAPTURE_MEDIA_BYTES) throw new HttpError(400, 'INVALID_MEDIA', '录音和图片合计不能超过 16.25 MiB');
   const rawFront = body.front;
   if (typeof rawFront !== 'string' || rawFront.length > 50_000 || (!rawFront.trim() && !audioData && !imageData.length)) {
     throw new HttpError(400, 'INVALID_INPUT', 'front 必须是非空文本，纯录音或纯图片时可以为空');

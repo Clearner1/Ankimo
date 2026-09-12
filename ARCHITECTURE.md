@@ -43,7 +43,9 @@ not a browser note store and does not change existing `/v1` or AnkiConnect
 contracts. After sync, the row keeps only a fingerprint/note-ID tombstone; the
 capture text and tags are cleared.
 
-Short-note captures may include up to four bounded JPEG images. They reuse the
+Short-note captures may include up to nine bounded JPEG images. Each JPEG is
+at most 1.25 MiB, audio remains at most 5 MiB, and combined decoded media is
+bounded to 16.25 MiB in a 24 MiB JSON request. They reuse the
 same JSON request, private staging directory, SQLite worker, deterministic
 Anki media names, and capture fingerprint as voice media; no second upload
 service or browser contract is introduced. The worker appends image references

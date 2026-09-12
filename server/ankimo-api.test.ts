@@ -686,12 +686,11 @@ describe('Ankimo HTTP API', () => {
     expect(readFileSync(join(dir, 'audio', `${captureId}.m4a`))).toEqual(Buffer.from('invalid audio'));
   });
 
-  it('stores up to four memo images in order and keeps image capture idempotent', async () => {
+  it('stores nine memo images in order and keeps image capture idempotent', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'ankimo-image-capture-test-'));
     tempDirs.push(dir);
     const captureId = '00000000-0000-4000-8000-00000000000e';
-    const first = Buffer.from([0xff, 0xd8, 1, 0xff, 0xd9]);
-    const second = Buffer.from([0xff, 0xd8, 2, 0xff, 0xd9]);
+    const images = Array.from({ length: 9 }, (_, index) => Buffer.from([0xff, 0xd8, index + 1, 0xff, 0xd9]));
     const stored: string[] = [];
     let fields: Record<string, string> = {};
     const base = await start({
@@ -719,23 +718,20 @@ describe('Ankimo HTTP API', () => {
       mode: 'memo',
       front: '',
       tags: [],
-      images: [first, second].map(data => ({ format: 'jpg', data: data.toString('base64') }))
+      images: images.map(data => ({ format: 'jpg', data: data.toString('base64') }))
     };
 
     expect((await capture(base, '', body)).response.status).toBe(202);
     expect(await waitForCaptureStatus(base, '', captureId, 'synced')).toMatchObject({ noteId: 912 });
-    expect(stored).toEqual([
-      `ankimo-${captureId}-1.jpg:1`,
-      `ankimo-${captureId}-2.jpg:2`
-    ]);
+    expect(stored).toEqual(images.map((_, index) => `ankimo-${captureId}-${index + 1}.jpg:${index + 1}`));
     expect(fields['引用']).toBe(
-      `<img src="ankimo-${captureId}-1.jpg" alt="" /><br><img src="ankimo-${captureId}-2.jpg" alt="" />`
+      images.map((_, index) => `<img src="ankimo-${captureId}-${index + 1}.jpg" alt="" />`).join('<br>')
     );
     expect(existsSync(join(dir, 'media', `${captureId}-1.jpg`))).toBe(false);
     expect((await capture(base, '', body)).body).toMatchObject({ status: 'synced', noteId: 912 });
     expect((await capture(base, '', {
       ...body,
-      images: [{ format: 'jpg', data: second.toString('base64') }]
+      images: [body.images[1]]
     })).response.status).toBe(409);
 
     const rejected = await capture(base, '', {
@@ -743,6 +739,45 @@ describe('Ankimo HTTP API', () => {
       mode: 'qa', front: '问题', back: '答案', tags: [], images: body.images
     });
     expect(rejected.response.status).toBe(400);
+  });
+
+  it('accepts nine maximum-size JPEGs plus bounded audio and rejects oversized media or requests', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ankimo-nine-images-test-'));
+    tempDirs.push(dir);
+    const base = await start({
+      captureMediaPath: join(dir, 'media'),
+      client: fakeAnki(),
+      transcribeAudio: async () => { throw new Error('test leaves capture queued for manual attention'); }
+    });
+    const jpeg = Buffer.alloc(1_310_720, 0xff);
+    jpeg[1] = 0xd8;
+    jpeg[jpeg.length - 1] = 0xd9;
+    const image = { format: 'jpg', data: jpeg.toString('base64') };
+    const body = {
+      captureId: '00000000-0000-4000-8000-00000000002e',
+      mode: 'memo', front: '', tags: [],
+      images: Array.from({ length: 9 }, () => image),
+      audio: { format: 'm4a', data: Buffer.alloc(5 * 1024 * 1024).toString('base64') }
+    };
+    expect((await capture(base, '', body)).response.status).toBe(202);
+    expect(await waitForCaptureStatus(base, '', body.captureId, 'needs_attention'))
+      .toMatchObject({ errorCode: 'TYPELESS_FAILED' });
+    expect(readFileSync(join(dir, 'media', `${body.captureId}-9.jpg`))).toEqual(jpeg);
+
+    const invalidImages = await capture(base, '', { ...body, audio: undefined, images: [...body.images, image] });
+    expect(invalidImages.response.status).toBe(400);
+    expect(invalidImages.body).toMatchObject({ error: { code: 'INVALID_IMAGE', message: '图片最多 9 张' } });
+    const largeImage = await capture(base, '', {
+      ...body, audio: undefined, images: [{ ...image, data: Buffer.concat([jpeg, Buffer.from([0])]).toString('base64') }]
+    });
+    expect(largeImage.body).toMatchObject({ error: { code: 'INVALID_IMAGE' } });
+    const largeAudio = await capture(base, '', {
+      ...body, images: [], audio: { format: 'm4a', data: Buffer.alloc(5 * 1024 * 1024 + 1).toString('base64') }
+    });
+    expect(largeAudio.body).toMatchObject({ error: { code: 'INVALID_AUDIO' } });
+    const largeRequest = await capture(base, '', { front: 'x'.repeat(24 * 1024 * 1024) });
+    expect(largeRequest.response.status).toBe(413);
+    expect(largeRequest.body).toMatchObject({ error: { code: 'BODY_TOO_LARGE' } });
   });
 
   it('never retries an ambiguous transcription until the user asks', async () => {
