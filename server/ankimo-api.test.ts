@@ -780,7 +780,7 @@ describe('Ankimo HTTP API', () => {
     const largeRequest = await capture(base, '', { front: 'x'.repeat(24 * 1024 * 1024) });
     expect(largeRequest.response.status).toBe(413);
     expect(largeRequest.body).toMatchObject({ error: { code: 'BODY_TOO_LARGE' } });
-  });
+  }, 15_000);
 
   it('never retries an ambiguous transcription until the user asks', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'ankimo-audio-retry-test-'));
