@@ -524,7 +524,7 @@ class CaptureStore {
   }
 
   imagePath(filename: string): string {
-    if (!this.mediaPath || !/^[0-9a-f-]{36}-[1-4]\.jpg$/i.test(filename)) {
+    if (!this.mediaPath || !/^[0-9a-f-]{36}-[1-9]\.jpg$/i.test(filename)) {
       throw new HttpError(500, 'IMAGE_STORE_UNAVAILABLE', '图片存储不可用');
     }
     return join(this.mediaPath, filename);

@@ -727,7 +727,9 @@ describe('Ankimo HTTP API', () => {
     expect(fields['引用']).toBe(
       images.map((_, index) => `<img src="ankimo-${captureId}-${index + 1}.jpg" alt="" />`).join('<br>')
     );
-    expect(existsSync(join(dir, 'media', `${captureId}-1.jpg`))).toBe(false);
+    for (let index = 1; index <= 9; index++) {
+      expect(existsSync(join(dir, 'media', `${captureId}-${index}.jpg`))).toBe(false);
+    }
     expect((await capture(base, '', body)).body).toMatchObject({ status: 'synced', noteId: 912 });
     expect((await capture(base, '', {
       ...body,
